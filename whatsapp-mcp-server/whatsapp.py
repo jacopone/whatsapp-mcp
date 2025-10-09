@@ -1,7 +1,7 @@
 import sqlite3
 from datetime import datetime
-from dataclasses import dataclass
-from typing import Optional, List, Tuple
+from dataclasses import dataclass, asdict
+from typing import Optional, List, Tuple, Dict, Any
 import os.path
 import requests
 import json
@@ -19,6 +19,7 @@ class Message:
     chat_jid: str
     id: str
     chat_name: Optional[str] = None
+    sender_name: Optional[str] = None
     media_type: Optional[str] = None
 
 @dataclass
@@ -46,6 +47,25 @@ class MessageContext:
     message: Message
     before: List[Message]
     after: List[Message]
+
+def dataclass_to_dict(obj: Any) -> Dict[str, Any]:
+    """Convert dataclass to dictionary with datetime serialization."""
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    elif isinstance(obj, list):
+        return [dataclass_to_dict(item) for item in obj]
+    elif hasattr(obj, '__dataclass_fields__'):
+        result = {}
+        for field_name, field_value in asdict(obj).items():
+            if isinstance(field_value, datetime):
+                result[field_name] = field_value.isoformat()
+            elif isinstance(field_value, list):
+                result[field_name] = [dataclass_to_dict(item) for item in field_value]
+            else:
+                result[field_name] = field_value
+        return result
+    else:
+        return obj
 
 def get_sender_name(sender_jid: str) -> str:
     try:
@@ -139,8 +159,9 @@ def list_messages(
         cursor = conn.cursor()
         
         # Build base query
-        query_parts = ["SELECT messages.timestamp, messages.sender, chats.name, messages.content, messages.is_from_me, chats.jid, messages.id, messages.media_type FROM messages"]
+        query_parts = ["SELECT messages.timestamp, messages.sender, chats.name, messages.content, messages.is_from_me, chats.jid, messages.id, messages.media_type, COALESCE(contacts.name, messages.sender) as sender_name FROM messages"]
         query_parts.append("JOIN chats ON messages.chat_jid = chats.jid")
+        query_parts.append("LEFT JOIN contacts ON messages.sender = SUBSTR(contacts.jid, 1, INSTR(contacts.jid, '@') - 1)")
         where_clauses = []
         params = []
         
@@ -197,7 +218,8 @@ def list_messages(
                 is_from_me=msg[4],
                 chat_jid=msg[5],
                 id=msg[6],
-                media_type=msg[7]
+                media_type=msg[7],
+                sender_name=msg[8]
             )
             result.append(message)
             
@@ -209,11 +231,11 @@ def list_messages(
                 messages_with_context.extend(context.before)
                 messages_with_context.append(context.message)
                 messages_with_context.extend(context.after)
-            
-            return format_messages_list(messages_with_context, show_chat_info=True)
-            
-        # Format and display messages without context
-        return format_messages_list(result, show_chat_info=True)    
+
+            return [dataclass_to_dict(msg) for msg in messages_with_context]
+
+        # Return messages without context
+        return [dataclass_to_dict(msg) for msg in result]    
         
     except sqlite3.Error as e:
         print(f"Database error: {e}")
@@ -235,16 +257,17 @@ def get_message_context(
         
         # Get the target message first
         cursor.execute("""
-            SELECT messages.timestamp, messages.sender, chats.name, messages.content, messages.is_from_me, chats.jid, messages.id, messages.chat_jid, messages.media_type
+            SELECT messages.timestamp, messages.sender, chats.name, messages.content, messages.is_from_me, chats.jid, messages.id, messages.chat_jid, messages.media_type, COALESCE(contacts.name, messages.sender) as sender_name
             FROM messages
             JOIN chats ON messages.chat_jid = chats.jid
+            LEFT JOIN contacts ON messages.sender = SUBSTR(contacts.jid, 1, INSTR(contacts.jid, '@') - 1)
             WHERE messages.id = ?
         """, (message_id,))
         msg_data = cursor.fetchone()
-        
+
         if not msg_data:
             raise ValueError(f"Message with ID {message_id} not found")
-            
+
         target_message = Message(
             timestamp=datetime.fromisoformat(msg_data[0]),
             sender=msg_data[1],
@@ -253,19 +276,21 @@ def get_message_context(
             is_from_me=msg_data[4],
             chat_jid=msg_data[5],
             id=msg_data[6],
-            media_type=msg_data[8]
+            media_type=msg_data[8],
+            sender_name=msg_data[9]
         )
         
         # Get messages before
         cursor.execute("""
-            SELECT messages.timestamp, messages.sender, chats.name, messages.content, messages.is_from_me, chats.jid, messages.id, messages.media_type
+            SELECT messages.timestamp, messages.sender, chats.name, messages.content, messages.is_from_me, chats.jid, messages.id, messages.media_type, COALESCE(contacts.name, messages.sender) as sender_name
             FROM messages
             JOIN chats ON messages.chat_jid = chats.jid
+            LEFT JOIN contacts ON messages.sender = SUBSTR(contacts.jid, 1, INSTR(contacts.jid, '@') - 1)
             WHERE messages.chat_jid = ? AND messages.timestamp < ?
             ORDER BY messages.timestamp DESC
             LIMIT ?
         """, (msg_data[7], msg_data[0], before))
-        
+
         before_messages = []
         for msg in cursor.fetchall():
             before_messages.append(Message(
@@ -276,19 +301,21 @@ def get_message_context(
                 is_from_me=msg[4],
                 chat_jid=msg[5],
                 id=msg[6],
-                media_type=msg[7]
+                media_type=msg[7],
+                sender_name=msg[8]
             ))
-        
+
         # Get messages after
         cursor.execute("""
-            SELECT messages.timestamp, messages.sender, chats.name, messages.content, messages.is_from_me, chats.jid, messages.id, messages.media_type
+            SELECT messages.timestamp, messages.sender, chats.name, messages.content, messages.is_from_me, chats.jid, messages.id, messages.media_type, COALESCE(contacts.name, messages.sender) as sender_name
             FROM messages
             JOIN chats ON messages.chat_jid = chats.jid
+            LEFT JOIN contacts ON messages.sender = SUBSTR(contacts.jid, 1, INSTR(contacts.jid, '@') - 1)
             WHERE messages.chat_jid = ? AND messages.timestamp > ?
             ORDER BY messages.timestamp ASC
             LIMIT ?
         """, (msg_data[7], msg_data[0], after))
-        
+
         after_messages = []
         for msg in cursor.fetchall():
             after_messages.append(Message(
@@ -299,7 +326,8 @@ def get_message_context(
                 is_from_me=msg[4],
                 chat_jid=msg[5],
                 id=msg[6],
-                media_type=msg[7]
+                media_type=msg[7],
+                sender_name=msg[8]
             ))
         
         return MessageContext(
@@ -322,15 +350,15 @@ def list_chats(
     page: int = 0,
     include_last_message: bool = True,
     sort_by: str = "last_active"
-) -> List[Chat]:
+) -> List[Dict[str, Any]]:
     """Get chats matching the specified criteria."""
     try:
         conn = sqlite3.connect(MESSAGES_DB_PATH)
         cursor = conn.cursor()
-        
+
         # Build base query
         query_parts = ["""
-            SELECT 
+            SELECT
                 chats.jid,
                 chats.name,
                 chats.last_message_time,
@@ -339,35 +367,35 @@ def list_chats(
                 messages.is_from_me as last_is_from_me
             FROM chats
         """]
-        
+
         if include_last_message:
             query_parts.append("""
-                LEFT JOIN messages ON chats.jid = messages.chat_jid 
+                LEFT JOIN messages ON chats.jid = messages.chat_jid
                 AND chats.last_message_time = messages.timestamp
             """)
-            
+
         where_clauses = []
         params = []
-        
+
         if query:
             where_clauses.append("(LOWER(chats.name) LIKE LOWER(?) OR chats.jid LIKE ?)")
             params.extend([f"%{query}%", f"%{query}%"])
-            
+
         if where_clauses:
             query_parts.append("WHERE " + " AND ".join(where_clauses))
-            
+
         # Add sorting
         order_by = "chats.last_message_time DESC" if sort_by == "last_active" else "chats.name"
         query_parts.append(f"ORDER BY {order_by}")
-        
+
         # Add pagination
         offset = (page ) * limit
         query_parts.append("LIMIT ? OFFSET ?")
         params.extend([limit, offset])
-        
+
         cursor.execute(" ".join(query_parts), tuple(params))
         chats = cursor.fetchall()
-        
+
         result = []
         for chat_data in chats:
             chat = Chat(
@@ -378,10 +406,10 @@ def list_chats(
                 last_sender=chat_data[4],
                 last_is_from_me=chat_data[5]
             )
-            result.append(chat)
-            
+            result.append(dataclass_to_dict(chat))
+
         return result
-        
+
     except sqlite3.Error as e:
         print(f"Database error: {e}")
         return []
@@ -390,29 +418,29 @@ def list_chats(
             conn.close()
 
 
-def search_contacts(query: str) -> List[Contact]:
+def search_contacts(query: str) -> List[Dict[str, Any]]:
     """Search contacts by name or phone number."""
     try:
         conn = sqlite3.connect(MESSAGES_DB_PATH)
         cursor = conn.cursor()
-        
+
         # Split query into characters to support partial matching
         search_pattern = '%' +query + '%'
-        
+
         cursor.execute("""
-            SELECT DISTINCT 
+            SELECT DISTINCT
                 jid,
                 name
             FROM chats
-            WHERE 
+            WHERE
                 (LOWER(name) LIKE LOWER(?) OR LOWER(jid) LIKE LOWER(?))
                 AND jid NOT LIKE '%@g.us'
             ORDER BY name, jid
             LIMIT 50
         """, (search_pattern, search_pattern))
-        
+
         contacts = cursor.fetchall()
-        
+
         result = []
         for contact_data in contacts:
             contact = Contact(
@@ -420,10 +448,10 @@ def search_contacts(query: str) -> List[Contact]:
                 name=contact_data[1],
                 jid=contact_data[0]
             )
-            result.append(contact)
-            
+            result.append(dataclass_to_dict(contact))
+
         return result
-        
+
     except sqlite3.Error as e:
         print(f"Database error: {e}")
         return []
@@ -432,9 +460,9 @@ def search_contacts(query: str) -> List[Contact]:
             conn.close()
 
 
-def get_contact_chats(jid: str, limit: int = 20, page: int = 0) -> List[Chat]:
+def get_contact_chats(jid: str, limit: int = 20, page: int = 0) -> List[Dict[str, Any]]:
     """Get all chats involving the contact.
-    
+
     Args:
         jid: The contact's JID to search for
         limit: Maximum number of chats to return (default 20)
@@ -443,7 +471,7 @@ def get_contact_chats(jid: str, limit: int = 20, page: int = 0) -> List[Chat]:
     try:
         conn = sqlite3.connect(MESSAGES_DB_PATH)
         cursor = conn.cursor()
-        
+
         cursor.execute("""
             SELECT DISTINCT
                 c.jid,
@@ -458,9 +486,9 @@ def get_contact_chats(jid: str, limit: int = 20, page: int = 0) -> List[Chat]:
             ORDER BY c.last_message_time DESC
             LIMIT ? OFFSET ?
         """, (jid, jid, limit, page * limit))
-        
+
         chats = cursor.fetchall()
-        
+
         result = []
         for chat_data in chats:
             chat = Chat(
@@ -471,10 +499,10 @@ def get_contact_chats(jid: str, limit: int = 20, page: int = 0) -> List[Chat]:
                 last_sender=chat_data[4],
                 last_is_from_me=chat_data[5]
             )
-            result.append(chat)
-            
+            result.append(dataclass_to_dict(chat))
+
         return result
-        
+
     except sqlite3.Error as e:
         print(f"Database error: {e}")
         return []
@@ -490,7 +518,7 @@ def get_last_interaction(jid: str) -> str:
         cursor = conn.cursor()
         
         cursor.execute("""
-            SELECT 
+            SELECT
                 m.timestamp,
                 m.sender,
                 c.name,
@@ -498,19 +526,21 @@ def get_last_interaction(jid: str) -> str:
                 m.is_from_me,
                 c.jid,
                 m.id,
-                m.media_type
+                m.media_type,
+                COALESCE(contacts.name, m.sender) as sender_name
             FROM messages m
             JOIN chats c ON m.chat_jid = c.jid
+            LEFT JOIN contacts ON m.sender = SUBSTR(contacts.jid, 1, INSTR(contacts.jid, '@') - 1)
             WHERE m.sender = ? OR c.jid = ?
             ORDER BY m.timestamp DESC
             LIMIT 1
         """, (jid, jid))
-        
+
         msg_data = cursor.fetchone()
-        
+
         if not msg_data:
             return None
-            
+
         message = Message(
             timestamp=datetime.fromisoformat(msg_data[0]),
             sender=msg_data[1],
@@ -519,7 +549,8 @@ def get_last_interaction(jid: str) -> str:
             is_from_me=msg_data[4],
             chat_jid=msg_data[5],
             id=msg_data[6],
-            media_type=msg_data[7]
+            media_type=msg_data[7],
+            sender_name=msg_data[8]
         )
         
         return format_message(message)
@@ -532,14 +563,14 @@ def get_last_interaction(jid: str) -> str:
             conn.close()
 
 
-def get_chat(chat_jid: str, include_last_message: bool = True) -> Optional[Chat]:
+def get_chat(chat_jid: str, include_last_message: bool = True) -> Optional[Dict[str, Any]]:
     """Get chat metadata by JID."""
     try:
         conn = sqlite3.connect(MESSAGES_DB_PATH)
         cursor = conn.cursor()
-        
+
         query = """
-            SELECT 
+            SELECT
                 c.jid,
                 c.name,
                 c.last_message_time,
@@ -548,22 +579,22 @@ def get_chat(chat_jid: str, include_last_message: bool = True) -> Optional[Chat]
                 m.is_from_me as last_is_from_me
             FROM chats c
         """
-        
+
         if include_last_message:
             query += """
-                LEFT JOIN messages m ON c.jid = m.chat_jid 
+                LEFT JOIN messages m ON c.jid = m.chat_jid
                 AND c.last_message_time = m.timestamp
             """
-            
+
         query += " WHERE c.jid = ?"
-        
+
         cursor.execute(query, (chat_jid,))
         chat_data = cursor.fetchone()
-        
+
         if not chat_data:
             return None
-            
-        return Chat(
+
+        chat = Chat(
             jid=chat_data[0],
             name=chat_data[1],
             last_message_time=datetime.fromisoformat(chat_data[2]) if chat_data[2] else None,
@@ -571,7 +602,8 @@ def get_chat(chat_jid: str, include_last_message: bool = True) -> Optional[Chat]
             last_sender=chat_data[4],
             last_is_from_me=chat_data[5]
         )
-        
+        return dataclass_to_dict(chat)
+
     except sqlite3.Error as e:
         print(f"Database error: {e}")
         return None
@@ -580,14 +612,14 @@ def get_chat(chat_jid: str, include_last_message: bool = True) -> Optional[Chat]
             conn.close()
 
 
-def get_direct_chat_by_contact(sender_phone_number: str) -> Optional[Chat]:
+def get_direct_chat_by_contact(sender_phone_number: str) -> Optional[Dict[str, Any]]:
     """Get chat metadata by sender phone number."""
     try:
         conn = sqlite3.connect(MESSAGES_DB_PATH)
         cursor = conn.cursor()
-        
+
         cursor.execute("""
-            SELECT 
+            SELECT
                 c.jid,
                 c.name,
                 c.last_message_time,
@@ -595,18 +627,18 @@ def get_direct_chat_by_contact(sender_phone_number: str) -> Optional[Chat]:
                 m.sender as last_sender,
                 m.is_from_me as last_is_from_me
             FROM chats c
-            LEFT JOIN messages m ON c.jid = m.chat_jid 
+            LEFT JOIN messages m ON c.jid = m.chat_jid
                 AND c.last_message_time = m.timestamp
             WHERE c.jid LIKE ? AND c.jid NOT LIKE '%@g.us'
             LIMIT 1
         """, (f"%{sender_phone_number}%",))
-        
+
         chat_data = cursor.fetchone()
-        
+
         if not chat_data:
             return None
-            
-        return Chat(
+
+        chat = Chat(
             jid=chat_data[0],
             name=chat_data[1],
             last_message_time=datetime.fromisoformat(chat_data[2]) if chat_data[2] else None,
@@ -614,7 +646,8 @@ def get_direct_chat_by_contact(sender_phone_number: str) -> Optional[Chat]:
             last_sender=chat_data[4],
             last_is_from_me=chat_data[5]
         )
-        
+        return dataclass_to_dict(chat)
+
     except sqlite3.Error as e:
         print(f"Database error: {e}")
         return None

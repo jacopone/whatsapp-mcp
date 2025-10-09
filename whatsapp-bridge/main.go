@@ -33,12 +33,13 @@ import (
 
 // Message represents a chat message for our client
 type Message struct {
-	Time      time.Time
-	Sender    string
-	Content   string
-	IsFromMe  bool
-	MediaType string
-	Filename  string
+	Time       time.Time
+	Sender     string
+	SenderName string
+	Content    string
+	IsFromMe   bool
+	MediaType  string
+	Filename   string
 }
 
 // Database handler for storing message history
@@ -66,7 +67,13 @@ func NewMessageStore() (*MessageStore, error) {
 			name TEXT,
 			last_message_time TIMESTAMP
 		);
-		
+
+		CREATE TABLE IF NOT EXISTS contacts (
+			jid TEXT PRIMARY KEY,
+			name TEXT,
+			phone_number TEXT
+		);
+
 		CREATE TABLE IF NOT EXISTS messages (
 			id TEXT,
 			chat_jid TEXT,
@@ -124,10 +131,42 @@ func (store *MessageStore) StoreMessage(id, chatJID, sender, content string, tim
 	return err
 }
 
+// PopulateContacts fetches all contacts from WhatsApp and stores them in the database
+func (store *MessageStore) PopulateContacts(client *whatsmeow.Client) error {
+	contacts, err := client.Store.Contacts.GetAllContacts(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to get contacts: %v", err)
+	}
+
+	for jid, contact := range contacts {
+		phoneNumber := jid.User
+		name := contact.FullName
+		if name == "" {
+			name = phoneNumber
+		}
+
+		_, err := store.db.Exec(
+			"INSERT OR REPLACE INTO contacts (jid, name, phone_number) VALUES (?, ?, ?)",
+			jid.String(), name, phoneNumber,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to store contact %s: %v", jid.String(), err)
+		}
+	}
+
+	fmt.Printf("Populated %d contacts into the database\n", len(contacts))
+	return nil
+}
+
 // Get messages from a chat
 func (store *MessageStore) GetMessages(chatJID string, limit int) ([]Message, error) {
 	rows, err := store.db.Query(
-		"SELECT sender, content, timestamp, is_from_me, media_type, filename FROM messages WHERE chat_jid = ? ORDER BY timestamp DESC LIMIT ?",
+		`SELECT m.sender, COALESCE(c.name, m.sender) as sender_name, m.content, m.timestamp, m.is_from_me, m.media_type, m.filename
+		FROM messages m
+		LEFT JOIN contacts c ON m.sender = SUBSTR(c.jid, 1, INSTR(c.jid, '@') - 1)
+		WHERE m.chat_jid = ?
+		ORDER BY m.timestamp DESC
+		LIMIT ?`,
 		chatJID, limit,
 	)
 	if err != nil {
@@ -139,7 +178,7 @@ func (store *MessageStore) GetMessages(chatJID string, limit int) ([]Message, er
 	for rows.Next() {
 		var msg Message
 		var timestamp time.Time
-		err := rows.Scan(&msg.Sender, &msg.Content, &timestamp, &msg.IsFromMe, &msg.MediaType, &msg.Filename)
+		err := rows.Scan(&msg.Sender, &msg.SenderName, &msg.Content, &timestamp, &msg.IsFromMe, &msg.MediaType, &msg.Filename)
 		if err != nil {
 			return nil, err
 		}
@@ -641,7 +680,7 @@ func downloadMedia(client *whatsmeow.Client, messageStore *MessageStore, message
 	}
 
 	// Download the media using whatsmeow client
-	mediaData, err := client.Download(downloader)
+	mediaData, err := client.Download(context.Background(), downloader)
 	if err != nil {
 		return false, "", "", "", fmt.Errorf("failed to download media: %v", err)
 	}
@@ -800,14 +839,14 @@ func main() {
 		return
 	}
 
-	container, err := sqlstore.New("sqlite3", "file:store/whatsapp.db?_foreign_keys=on", dbLog)
+	container, err := sqlstore.New(context.Background(), "sqlite3", "file:store/whatsapp.db?_foreign_keys=on", dbLog)
 	if err != nil {
 		logger.Errorf("Failed to connect to database: %v", err)
 		return
 	}
 
 	// Get device store - This contains session information
-	deviceStore, err := container.GetFirstDevice()
+	deviceStore, err := container.GetFirstDevice(context.Background())
 	if err != nil {
 		if err == sql.ErrNoRows {
 			// No device exists, create one
@@ -905,6 +944,13 @@ func main() {
 
 	fmt.Println("\n✓ Connected to WhatsApp! Type 'help' for commands.")
 
+	// Populate contacts from WhatsApp into the database
+	logger.Infof("Populating contacts from WhatsApp...")
+	err = messageStore.PopulateContacts(client)
+	if err != nil {
+		logger.Warnf("Failed to populate contacts: %v", err)
+	}
+
 	// Start REST API server
 	startRESTServer(client, messageStore, 8080)
 
@@ -988,7 +1034,7 @@ func GetChatName(client *whatsmeow.Client, messageStore *MessageStore, jid types
 		logger.Infof("Getting name for contact: %s", chatJID)
 
 		// Just use contact info (full name)
-		contact, err := client.Store.Contacts.GetContact(jid)
+		contact, err := client.Store.Contacts.GetContact(context.Background(), jid)
 		if err == nil && contact.FullName != "" {
 			name = contact.FullName
 		} else if sender != "" {
