@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/binary"
@@ -13,14 +14,13 @@ import (
 	"os/signal"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/mdp/qrterminal"
-
-	"bytes"
 
 	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
@@ -65,7 +65,8 @@ func NewMessageStore() (*MessageStore, error) {
 		CREATE TABLE IF NOT EXISTS chats (
 			jid TEXT PRIMARY KEY,
 			name TEXT,
-			last_message_time TIMESTAMP
+			last_message_time TIMESTAMP,
+			parent_group_jid TEXT
 		);
 
 		CREATE TABLE IF NOT EXISTS contacts (
@@ -110,6 +111,15 @@ func (store *MessageStore) StoreChat(jid, name string, lastMessageTime time.Time
 	_, err := store.db.Exec(
 		"INSERT OR REPLACE INTO chats (jid, name, last_message_time) VALUES (?, ?, ?)",
 		jid, name, lastMessageTime,
+	)
+	return err
+}
+
+// Store a chat with parent group JID in the database
+func (store *MessageStore) StoreChatWithParent(jid, name string, lastMessageTime time.Time, parentGroupJID string) error {
+	_, err := store.db.Exec(
+		"INSERT OR REPLACE INTO chats (jid, name, last_message_time, parent_group_jid) VALUES (?, ?, ?, ?)",
+		jid, name, lastMessageTime, parentGroupJID,
 	)
 	return err
 }
@@ -209,6 +219,190 @@ func (store *MessageStore) GetChats() (map[string]time.Time, error) {
 	}
 
 	return chats, nil
+}
+
+// QueryMessages queries messages with various filters
+func (store *MessageStore) QueryMessages(req QueryMessagesRequest) ([]MessageResult, int, error) {
+	// Build dynamic query
+	query := `
+		SELECT m.id, m.chat_jid, COALESCE(ch.name, m.chat_jid) as chat_name,
+		       m.sender, COALESCE(c.name, m.sender) as sender_name,
+		       m.content, m.timestamp, m.is_from_me, m.media_type, m.filename
+		FROM messages m
+		LEFT JOIN contacts c ON m.sender = SUBSTR(c.jid, 1, INSTR(c.jid, '@') - 1)
+		LEFT JOIN chats ch ON m.chat_jid = ch.jid
+		WHERE 1=1
+	`
+	countQuery := "SELECT COUNT(*) FROM messages m WHERE 1=1"
+
+	args := []interface{}{}
+	countArgs := []interface{}{}
+
+	// Add filters
+	if req.ChatJID != "" {
+		query += " AND m.chat_jid = ?"
+		countQuery += " AND m.chat_jid = ?"
+		args = append(args, req.ChatJID)
+		countArgs = append(countArgs, req.ChatJID)
+	}
+
+	if req.Sender != "" {
+		query += " AND m.sender LIKE ?"
+		countQuery += " AND m.sender LIKE ?"
+		senderPattern := "%" + req.Sender + "%"
+		args = append(args, senderPattern)
+		countArgs = append(countArgs, senderPattern)
+	}
+
+	if req.Content != "" {
+		query += " AND m.content LIKE ?"
+		countQuery += " AND m.content LIKE ?"
+		contentPattern := "%" + req.Content + "%"
+		args = append(args, contentPattern)
+		countArgs = append(countArgs, contentPattern)
+	}
+
+	if req.AfterTime != "" {
+		afterTime, err := time.Parse(time.RFC3339, req.AfterTime)
+		if err == nil {
+			query += " AND m.timestamp > ?"
+			countQuery += " AND m.timestamp > ?"
+			args = append(args, afterTime)
+			countArgs = append(countArgs, afterTime)
+		}
+	}
+
+	if req.BeforeTime != "" {
+		beforeTime, err := time.Parse(time.RFC3339, req.BeforeTime)
+		if err == nil {
+			query += " AND m.timestamp < ?"
+			countQuery += " AND m.timestamp < ?"
+			args = append(args, beforeTime)
+			countArgs = append(countArgs, beforeTime)
+		}
+	}
+
+	if !req.IncludeMedia {
+		query += " AND (m.media_type IS NULL OR m.media_type = '')"
+		countQuery += " AND (m.media_type IS NULL OR m.media_type = '')"
+	} else if req.MediaTypeFilter != "" {
+		query += " AND m.media_type = ?"
+		countQuery += " AND m.media_type = ?"
+		args = append(args, req.MediaTypeFilter)
+		countArgs = append(countArgs, req.MediaTypeFilter)
+	}
+
+	// Get total count
+	var total int
+	err := store.db.QueryRow(countQuery, countArgs...).Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Add ordering and pagination
+	query += " ORDER BY m.timestamp DESC"
+
+	if req.Limit > 0 {
+		query += " LIMIT ?"
+		args = append(args, req.Limit)
+	} else {
+		query += " LIMIT 100" // Default limit
+	}
+
+	if req.Offset > 0 {
+		query += " OFFSET ?"
+		args = append(args, req.Offset)
+	}
+
+	// Execute query
+	rows, err := store.db.Query(query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var messages []MessageResult
+	for rows.Next() {
+		var msg MessageResult
+		var mediaType, filename sql.NullString
+
+		err := rows.Scan(
+			&msg.ID, &msg.ChatJID, &msg.ChatName,
+			&msg.Sender, &msg.SenderName,
+			&msg.Content, &msg.Timestamp, &msg.IsFromMe,
+			&mediaType, &filename,
+		)
+		if err != nil {
+			return nil, 0, err
+		}
+
+		if mediaType.Valid {
+			msg.MediaType = mediaType.String
+		}
+		if filename.Valid {
+			msg.Filename = filename.String
+		}
+
+		messages = append(messages, msg)
+	}
+
+	return messages, total, nil
+}
+
+// GetMessageStats returns statistics about stored messages
+func (store *MessageStore) GetMessageStats() (MessageStatsResponse, error) {
+	stats := MessageStatsResponse{
+		Success:        true,
+		MessagesByType: make(map[string]int),
+	}
+
+	// Get total messages
+	err := store.db.QueryRow("SELECT COUNT(*) FROM messages").Scan(&stats.TotalMessages)
+	if err != nil {
+		return stats, err
+	}
+
+	// Get total chats
+	err = store.db.QueryRow("SELECT COUNT(*) FROM chats").Scan(&stats.TotalChats)
+	if err != nil {
+		return stats, err
+	}
+
+	// Get total contacts
+	err = store.db.QueryRow("SELECT COUNT(*) FROM contacts").Scan(&stats.TotalContacts)
+	if err != nil {
+		return stats, err
+	}
+
+	// Get media vs text messages
+	err = store.db.QueryRow("SELECT COUNT(*) FROM messages WHERE media_type IS NOT NULL AND media_type != ''").Scan(&stats.MediaMessages)
+	if err != nil {
+		return stats, err
+	}
+	stats.TextMessages = stats.TotalMessages - stats.MediaMessages
+
+	// Get messages by type
+	rows, err := store.db.Query("SELECT media_type, COUNT(*) FROM messages WHERE media_type IS NOT NULL AND media_type != '' GROUP BY media_type")
+	if err != nil {
+		return stats, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var mediaType string
+		var count int
+		if err := rows.Scan(&mediaType, &count); err == nil {
+			stats.MessagesByType[mediaType] = count
+		}
+	}
+
+	// Get oldest and newest message timestamps
+	err = store.db.QueryRow("SELECT MIN(timestamp), MAX(timestamp) FROM messages").Scan(&stats.OldestMessage, &stats.NewestMessage)
+	if err != nil && err != sql.ErrNoRows {
+		return stats, err
+	}
+
+	return stats, nil
 }
 
 // Extract text content from a message
@@ -523,6 +717,19 @@ type DownloadMediaResponse struct {
 	Path     string `json:"path,omitempty"`
 }
 
+// MarkAsReadRequest represents the request body for marking messages as read
+type MarkAsReadRequest struct {
+	ChatJID    string   `json:"chat_jid"`
+	MessageIDs []string `json:"message_ids"`
+	Sender     string   `json:"sender"`
+}
+
+// MarkAsReadResponse represents the response for the mark as read API
+type MarkAsReadResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
 // Store additional media info in the database
 func (store *MessageStore) StoreMediaInfo(id, chatJID, url string, mediaKey, fileSHA256, fileEncSHA256 []byte, fileLength uint64) error {
 	_, err := store.db.Exec(
@@ -716,6 +923,35 @@ func extractDirectPathFromURL(url string) string {
 
 // Start a REST API server to expose the WhatsApp client functionality
 func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port int) {
+	// Handler for health check
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		// Get database path
+		dbPath := "data/messages.db"
+
+		// Calculate uptime (simple approximation - would need startTime global var for accuracy)
+		uptime := 0 // Placeholder - would track actual uptime in production
+
+		// Build response
+		response := map[string]interface{}{
+			"status":             "ok",
+			"whatsapp_connected": client.IsConnected(),
+			"database_path":      dbPath,
+			"uptime_seconds":     uptime,
+		}
+
+		// Set status code based on connection
+		statusCode := http.StatusOK
+		if !client.IsConnected() {
+			statusCode = http.StatusServiceUnavailable
+			response["status"] = "degraded"
+		}
+
+		// Send response
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(statusCode)
+		json.NewEncoder(w).Encode(response)
+	})
+
 	// Handler for sending messages
 	http.HandleFunc("/api/send", func(w http.ResponseWriter, r *http.Request) {
 		// Only allow POST requests
@@ -813,6 +1049,371 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 		})
 	})
 
+	// Handler for marking messages as read
+	http.HandleFunc("/api/mark_read", func(w http.ResponseWriter, r *http.Request) {
+		// Only allow POST requests
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Parse the request body
+		var req MarkAsReadRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request format", http.StatusBadRequest)
+			return
+		}
+
+		// Validate request
+		if req.ChatJID == "" {
+			http.Error(w, "Chat JID is required", http.StatusBadRequest)
+			return
+		}
+
+		if len(req.MessageIDs) == 0 {
+			http.Error(w, "At least one message ID is required", http.StatusBadRequest)
+			return
+		}
+
+		// Parse chat JID
+		chatJID, err := types.ParseJID(req.ChatJID)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Invalid chat JID: %v", err), http.StatusBadRequest)
+			return
+		}
+
+		// Parse sender JID if provided
+		var senderJID types.JID
+		if req.Sender != "" {
+			senderJID, err = types.ParseJID(req.Sender)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Invalid sender JID: %v", err), http.StatusBadRequest)
+				return
+			}
+		}
+
+		// Convert string IDs to MessageID types
+		messageIDs := make([]types.MessageID, len(req.MessageIDs))
+		for i, id := range req.MessageIDs {
+			messageIDs[i] = types.MessageID(id)
+		}
+
+		// Send read receipt for the messages
+		err = client.MarkRead(messageIDs, time.Now(), chatJID, senderJID)
+		if err != nil {
+			fmt.Printf("Failed to mark messages as read: %v\n", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(MarkAsReadResponse{
+				Success: false,
+				Message: fmt.Sprintf("Failed to mark messages as read: %v", err),
+			})
+			return
+		}
+
+		fmt.Printf("Marked %d message(s) as read in chat %s\n", len(req.MessageIDs), req.ChatJID)
+
+		// Set response headers
+		w.Header().Set("Content-Type", "application/json")
+
+		// Send response
+		json.NewEncoder(w).Encode(MarkAsReadResponse{
+			Success: true,
+			Message: fmt.Sprintf("Marked %d message(s) as read", len(req.MessageIDs)),
+		})
+	})
+
+	// Handler for triggering history sync
+	http.HandleFunc("/api/sync_history", func(w http.ResponseWriter, r *http.Request) {
+		// Only allow POST requests
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Trigger history sync
+		requestHistorySync(client)
+
+		// Set response headers
+		w.Header().Set("Content-Type", "application/json")
+
+		// Send response
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"message": "History sync requested. Check logs for sync progress.",
+		})
+	})
+
+	// Handler for syncing all groups from WhatsApp
+	http.HandleFunc("/api/sync_groups", func(w http.ResponseWriter, r *http.Request) {
+		// Only allow POST requests
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Get all joined groups from WhatsApp
+		groups, err := client.GetJoinedGroups(context.Background())
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"message": fmt.Sprintf("Failed to get joined groups: %v", err),
+			})
+			return
+		}
+
+		fmt.Printf("Syncing %d groups from WhatsApp...\n", len(groups))
+
+		// Store each group in the database
+		syncedCount := 0
+		for _, group := range groups {
+			groupJID := group.JID.String()
+			groupName := group.Name
+			if groupName == "" {
+				groupName = fmt.Sprintf("Group %s", group.JID.User)
+			}
+
+			// Check if group belongs to a community
+			parentGroupJID := ""
+			if group.GroupLinkedParent.LinkedParentJID.User != "" {
+				parentGroupJID = group.GroupLinkedParent.LinkedParentJID.String()
+			}
+
+			// Store the group with current timestamp
+			err := messageStore.StoreChatWithParent(groupJID, groupName, time.Now(), parentGroupJID)
+			if err != nil {
+				fmt.Printf("Failed to store group %s: %v\n", groupJID, err)
+			} else {
+				syncedCount++
+				if parentGroupJID != "" {
+					fmt.Printf("Stored group: %s (name: %s, community: %s)\n", groupJID, groupName, parentGroupJID)
+				} else {
+					fmt.Printf("Stored group: %s (name: %s)\n", groupJID, groupName)
+				}
+			}
+		}
+
+		// Set response headers
+		w.Header().Set("Content-Type", "application/json")
+
+		// Send response
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"message": fmt.Sprintf("Successfully synced %d groups", syncedCount),
+			"total":   len(groups),
+			"synced":  syncedCount,
+		})
+	})
+
+	// Handler for syncing history for a specific chat
+	http.HandleFunc("/api/sync_chat_history", func(w http.ResponseWriter, r *http.Request) {
+		// Only allow POST requests
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		fmt.Println("[DEBUG] /api/sync_chat_history endpoint called")
+
+		// Parse the request body
+		var req SyncChatHistoryRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request format", http.StatusBadRequest)
+			return
+		}
+
+		// Validate request
+		if req.ChatJID == "" {
+			http.Error(w, "Chat JID is required", http.StatusBadRequest)
+			return
+		}
+
+		// Default count to 50 if not specified
+		count := req.Count
+		if count == 0 {
+			count = 50
+		}
+
+		fmt.Printf("[DEBUG] Requesting history sync for chat %s (count: %d)...\n", req.ChatJID, count)
+
+		// Validate client state before attempting history sync
+		fmt.Println("[DEBUG] Checking client.IsConnected()...")
+		if !client.IsConnected() {
+			fmt.Println("[DEBUG] Client is NOT connected")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(SyncChatHistoryResponse{
+				Success: false,
+				Message: "Client is not connected to WhatsApp",
+			})
+			return
+		}
+		fmt.Println("[DEBUG] Client is connected")
+
+		fmt.Println("[DEBUG] Checking client.Store.ID...")
+		if client.Store.ID == nil {
+			fmt.Println("[DEBUG] Client.Store.ID is NIL")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(SyncChatHistoryResponse{
+				Success: false,
+				Message: "Client is not logged in to WhatsApp",
+			})
+			return
+		}
+		fmt.Printf("[DEBUG] Client.Store.ID is valid: %v\n", client.Store.ID)
+
+		// Parse chat JID
+		fmt.Printf("[DEBUG] Parsing chat JID: %s\n", req.ChatJID)
+		chatJID, err := types.ParseJID(req.ChatJID)
+		if err != nil {
+			fmt.Printf("[DEBUG] Failed to parse chat JID: %v\n", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(SyncChatHistoryResponse{
+				Success: false,
+				Message: fmt.Sprintf("Invalid chat JID: %v", err),
+			})
+			return
+		}
+		fmt.Printf("[DEBUG] Successfully parsed chat JID: %v\n", chatJID)
+
+		// Build history sync request for this specific chat
+		// Use nil as the MessageInfo parameter to request most recent messages
+		fmt.Println("[DEBUG] About to call client.BuildHistorySyncRequest...")
+		fmt.Printf("[DEBUG] Parameters: MessageInfo=nil, count=%d\n", count)
+		fmt.Printf("[DEBUG] Client state: IsConnected=%v, Store.ID=%v\n", client.IsConnected(), client.Store.ID)
+
+		historyMsg := client.BuildHistorySyncRequest(nil, count)
+
+		fmt.Println("[DEBUG] Successfully called BuildHistorySyncRequest")
+		if historyMsg == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(SyncChatHistoryResponse{
+				Success: false,
+				Message: "Failed to build history sync request",
+			})
+			return
+		}
+
+		// Send the history sync request with Peer flag
+		_, err = client.SendMessage(context.Background(), chatJID, historyMsg, whatsmeow.SendRequestExtra{Peer: true})
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(SyncChatHistoryResponse{
+				Success: false,
+				Message: fmt.Sprintf("Failed to send history sync request: %v", err),
+			})
+			return
+		}
+
+		fmt.Printf("History sync requested for chat %s\n", req.ChatJID)
+
+		// Set response headers
+		w.Header().Set("Content-Type", "application/json")
+
+		// Send response
+		json.NewEncoder(w).Encode(SyncChatHistoryResponse{
+			Success: true,
+			Message: fmt.Sprintf("History sync requested for chat %s. Messages will be synced in the background.", req.ChatJID),
+		})
+	})
+
+	// Handler for querying messages with filters
+	http.HandleFunc("/api/messages", func(w http.ResponseWriter, r *http.Request) {
+		// Only allow GET requests
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Parse query parameters
+		query := r.URL.Query()
+		req := QueryMessagesRequest{
+			ChatJID:         query.Get("chat_jid"),
+			Sender:          query.Get("sender"),
+			Content:         query.Get("content"),
+			AfterTime:       query.Get("after_time"),
+			BeforeTime:      query.Get("before_time"),
+			MediaTypeFilter: query.Get("media_type"),
+		}
+
+		// Parse limit and offset
+		if limitStr := query.Get("limit"); limitStr != "" {
+			if limit, err := strconv.Atoi(limitStr); err == nil {
+				req.Limit = limit
+			}
+		}
+		if offsetStr := query.Get("offset"); offsetStr != "" {
+			if offset, err := strconv.Atoi(offsetStr); err == nil {
+				req.Offset = offset
+			}
+		}
+
+		// Parse include_media flag
+		if includeMediaStr := query.Get("include_media"); includeMediaStr == "true" {
+			req.IncludeMedia = true
+		}
+
+		// Query messages
+		messages, total, err := messageStore.QueryMessages(req)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(QueryMessagesResponse{
+				Success: false,
+				Message: fmt.Sprintf("Failed to query messages: %v", err),
+			})
+			return
+		}
+
+		// Set response headers
+		w.Header().Set("Content-Type", "application/json")
+
+		// Send response
+		limit := req.Limit
+		if limit == 0 {
+			limit = 100 // Default limit
+		}
+		json.NewEncoder(w).Encode(QueryMessagesResponse{
+			Success:  true,
+			Messages: messages,
+			Total:    total,
+			Limit:    limit,
+			Offset:   req.Offset,
+		})
+	})
+
+	// Handler for getting message statistics
+	http.HandleFunc("/api/stats", func(w http.ResponseWriter, r *http.Request) {
+		// Only allow GET requests
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Get stats
+		stats, err := messageStore.GetMessageStats()
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(MessageStatsResponse{
+				Success: false,
+			})
+			return
+		}
+
+		// Set response headers
+		w.Header().Set("Content-Type", "application/json")
+
+		// Send response
+		json.NewEncoder(w).Encode(stats)
+	})
+
 	// Start the server
 	serverAddr := fmt.Sprintf(":%d", port)
 	fmt.Printf("Starting REST API server on %s...\n", serverAddr)
@@ -823,6 +1424,69 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 			fmt.Printf("REST API server error: %v\n", err)
 		}
 	}()
+}
+
+
+// SyncChatHistoryRequest represents the request body for syncing a chat's history
+type SyncChatHistoryRequest struct {
+	ChatJID string `json:"chat_jid"`
+	Count   int    `json:"count,omitempty"`
+}
+
+// SyncChatHistoryResponse represents the response for the sync chat history API
+type SyncChatHistoryResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+// QueryMessagesRequest represents the request for querying messages with filters
+type QueryMessagesRequest struct {
+	ChatJID        string `json:"chat_jid,omitempty"`
+	Sender         string `json:"sender,omitempty"`
+	Content        string `json:"content,omitempty"`
+	AfterTime      string `json:"after_time,omitempty"`
+	BeforeTime     string `json:"before_time,omitempty"`
+	Limit          int    `json:"limit,omitempty"`
+	Offset         int    `json:"offset,omitempty"`
+	IncludeMedia   bool   `json:"include_media,omitempty"`
+	MediaTypeFilter string `json:"media_type,omitempty"`
+}
+
+// MessageResult represents a message in query results
+type MessageResult struct {
+	ID         string    `json:"id"`
+	ChatJID    string    `json:"chat_jid"`
+	ChatName   string    `json:"chat_name,omitempty"`
+	Sender     string    `json:"sender"`
+	SenderName string    `json:"sender_name,omitempty"`
+	Content    string    `json:"content"`
+	Timestamp  time.Time `json:"timestamp"`
+	IsFromMe   bool      `json:"is_from_me"`
+	MediaType  string    `json:"media_type,omitempty"`
+	Filename   string    `json:"filename,omitempty"`
+}
+
+// QueryMessagesResponse represents the response for message queries
+type QueryMessagesResponse struct {
+	Success  bool            `json:"success"`
+	Message  string          `json:"message,omitempty"`
+	Messages []MessageResult `json:"messages"`
+	Total    int             `json:"total"`
+	Limit    int             `json:"limit"`
+	Offset   int             `json:"offset"`
+}
+
+// MessageStatsResponse represents statistics about messages
+type MessageStatsResponse struct {
+	Success        bool              `json:"success"`
+	TotalMessages  int               `json:"total_messages"`
+	TotalChats     int               `json:"total_chats"`
+	TotalContacts  int               `json:"total_contacts"`
+	MediaMessages  int               `json:"media_messages"`
+	TextMessages   int               `json:"text_messages"`
+	MessagesByType map[string]int    `json:"messages_by_type"`
+	OldestMessage  time.Time         `json:"oldest_message,omitempty"`
+	NewestMessage  time.Time         `json:"newest_message,omitempty"`
 }
 
 func main() {
