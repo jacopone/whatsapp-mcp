@@ -1430,6 +1430,30 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 		json.NewEncoder(w).Encode(stats)
 	})
 
+	// Register community routes
+	RegisterCommunityRoutes(http.DefaultServeMux, client, messageStore)
+
+	// Register group routes
+	RegisterGroupRoutes(http.DefaultServeMux, client)
+
+	// Register messaging routes
+	RegisterMessagingRoutes(http.DefaultServeMux, client)
+
+	// Register chat routes
+	RegisterChatRoutes(http.DefaultServeMux, client)
+
+	// Register contact routes
+	RegisterContactRoutes(http.DefaultServeMux, client)
+
+	// Register privacy routes
+	RegisterPrivacyRoutes(http.DefaultServeMux, client)
+
+	// Register business routes
+	RegisterBusinessRoutes(http.DefaultServeMux, client)
+
+	// Register newsletter routes
+	RegisterNewsletterRoutes(http.DefaultServeMux, client)
+
 	// Start the server
 	serverAddr := fmt.Sprintf(":%d", port)
 	fmt.Printf("Starting REST API server on %s...\n", serverAddr)

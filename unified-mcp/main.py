@@ -31,6 +31,7 @@ from whatsapp import (
 )
 from backends import go_client, baileys_client
 from sync import sync_baileys_to_go, clear_baileys_temp_data, get_baileys_sync_status
+import backends.go_client as go
 
 # Initialize FastMCP server
 mcp = FastMCP("whatsapp-unified")
@@ -645,6 +646,720 @@ def clear_baileys_temp_data() -> Dict[str, Any]:
         "success": success,
         "message": "Temp data cleared" if success else "Failed to clear temp data"
     }
+
+# ============================================================================
+# T043: MESSAGING MCP TOOLS (15 tools routing to Go bridge)
+# ============================================================================
+
+@mcp.tool()
+def send_text_message_v2(chat_jid: str, text: str) -> Dict[str, Any]:
+    """
+    Send a text message to a WhatsApp chat via Go bridge.
+
+    Args:
+        chat_jid: WhatsApp JID of the recipient (person or group)
+        text: The text message to send
+
+    Returns:
+        Dictionary with success status and message
+    """
+    success, message = go.send_text_message(chat_jid, text)
+    return {"success": success, "message": message}
+
+
+@mcp.tool()
+def send_media_message_v2(
+    chat_jid: str,
+    media_path: str,
+    media_type: str,
+    caption: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Send a media message (image, video, audio, document) via Go bridge.
+
+    Args:
+        chat_jid: WhatsApp JID of the recipient
+        media_path: Path to the media file on server
+        media_type: Type of media (image, video, audio, document)
+        caption: Optional caption for the media
+
+    Returns:
+        Dictionary with success status and message
+    """
+    success, message = go.send_media_message(chat_jid, media_path, media_type, caption)
+    return {"success": success, "message": message}
+
+
+@mcp.tool()
+def send_voice_note_v2(chat_jid: str, audio_path: str) -> Dict[str, Any]:
+    """
+    Send a voice note via Go bridge.
+
+    Args:
+        chat_jid: WhatsApp JID of the recipient
+        audio_path: Path to the audio file on server
+
+    Returns:
+        Dictionary with success status and message
+    """
+    success, message = go.send_voice_note(chat_jid, audio_path)
+    return {"success": success, "message": message}
+
+
+@mcp.tool()
+def send_sticker_v2(chat_jid: str, sticker_path: str) -> Dict[str, Any]:
+    """
+    Send a sticker via Go bridge.
+
+    Args:
+        chat_jid: WhatsApp JID of the recipient
+        sticker_path: Path to the sticker file on server
+
+    Returns:
+        Dictionary with success status and message
+    """
+    success, message = go.send_sticker(chat_jid, sticker_path)
+    return {"success": success, "message": message}
+
+
+@mcp.tool()
+def send_contact_v2(chat_jid: str, vcard: str) -> Dict[str, Any]:
+    """
+    Send a contact vCard via Go bridge.
+
+    Args:
+        chat_jid: WhatsApp JID of the recipient
+        vcard: vCard string in standard format
+
+    Returns:
+        Dictionary with success status and message
+    """
+    success, message = go.send_contact(chat_jid, vcard)
+    return {"success": success, "message": message}
+
+
+@mcp.tool()
+def send_location_v2(chat_jid: str, latitude: float, longitude: float) -> Dict[str, Any]:
+    """
+    Send a GPS location via Go bridge.
+
+    Args:
+        chat_jid: WhatsApp JID of the recipient
+        latitude: Latitude coordinate
+        longitude: Longitude coordinate
+
+    Returns:
+        Dictionary with success status and message
+    """
+    success, message = go.send_location(chat_jid, latitude, longitude)
+    return {"success": success, "message": message}
+
+
+@mcp.tool()
+def react_to_message_v2(chat_jid: str, message_id: str, emoji: str) -> Dict[str, Any]:
+    """
+    React to a message with an emoji via Go bridge.
+
+    Args:
+        chat_jid: WhatsApp JID of the chat containing the message
+        message_id: ID of the message to react to
+        emoji: Emoji to use for reaction
+
+    Returns:
+        Dictionary with success status and message
+    """
+    success, message = go.react_to_message(chat_jid, message_id, emoji)
+    return {"success": success, "message": message}
+
+
+@mcp.tool()
+def edit_message_v2(message_id: str, new_text: str) -> Dict[str, Any]:
+    """
+    Edit a previously sent message via Go bridge.
+
+    Args:
+        message_id: ID of the message to edit
+        new_text: New text content for the message
+
+    Returns:
+        Dictionary with success status and message
+    """
+    success, message = go.edit_message(message_id, new_text)
+    return {"success": success, "message": message}
+
+
+@mcp.tool()
+def delete_message_v2(message_id: str) -> Dict[str, Any]:
+    """
+    Delete/revoke a message via Go bridge.
+
+    Args:
+        message_id: ID of the message to delete
+
+    Returns:
+        Dictionary with success status and message
+    """
+    success, message = go.delete_message(message_id)
+    return {"success": success, "message": message}
+
+
+@mcp.tool()
+def forward_message_v2(message_id: str, to_chat_jid: str) -> Dict[str, Any]:
+    """
+    Forward a message to another chat via Go bridge.
+
+    Args:
+        message_id: ID of the message to forward
+        to_chat_jid: WhatsApp JID of the destination chat
+
+    Returns:
+        Dictionary with success status and message
+    """
+    success, message = go.forward_message(message_id, to_chat_jid)
+    return {"success": success, "message": message}
+
+
+@mcp.tool()
+def download_media_v2(message_id: str) -> Dict[str, Any]:
+    """
+    Download media from a message via Go bridge.
+
+    Args:
+        message_id: ID of the message containing media
+
+    Returns:
+        Dictionary with success status and file path
+    """
+    # Use existing go_client.download_media function
+    # Note: It requires chat_jid, but we'll use empty string as placeholder
+    # The Go endpoint should handle message_id alone
+    file_path = go_client.download_media(message_id, "")
+    if file_path:
+        return {"success": True, "message": "Media downloaded", "file_path": file_path}
+    else:
+        return {"success": False, "message": "Failed to download media"}
+
+
+@mcp.tool()
+def mark_message_read_v2(chat_jid: str, message_id: str) -> Dict[str, Any]:
+    """
+    Mark a specific message as read via Go bridge.
+
+    Args:
+        chat_jid: WhatsApp JID of the chat
+        message_id: ID of the message to mark as read
+
+    Returns:
+        Dictionary with success status and message
+    """
+    # Use existing mark_as_read function with single message ID
+    success, message = go_client.mark_as_read(chat_jid, [message_id])
+    return {"success": success, "message": message}
+
+
+@mcp.tool()
+def mark_chat_read_v2(chat_jid: str) -> Dict[str, Any]:
+    """
+    Mark all messages in a chat as read via Go bridge.
+
+    Args:
+        chat_jid: WhatsApp JID of the chat
+
+    Returns:
+        Dictionary with success status and message
+    """
+    # Use existing mark_as_read function with empty message list (mark all)
+    success, message = go_client.mark_as_read(chat_jid, [])
+    return {"success": success, "message": message}
+
+
+@mcp.tool()
+def list_chats_v2(limit: int = 20, archived: bool = False) -> Dict[str, Any]:
+    """
+    List WhatsApp chats via Go bridge.
+
+    Args:
+        limit: Maximum number of chats to return
+        archived: Whether to include archived chats
+
+    Returns:
+        Dictionary with list of chats
+    """
+    chats = go.list_chats(limit, archived)
+    return {"success": True, "chats": chats, "count": len(chats)}
+
+
+@mcp.tool()
+def get_chat_metadata_v2(chat_jid: str) -> Dict[str, Any]:
+    """
+    Get metadata for a specific chat via Go bridge.
+
+    Args:
+        chat_jid: WhatsApp JID of the chat
+
+    Returns:
+        Dictionary with chat metadata
+    """
+    return go.get_chat_metadata(chat_jid)
+
+
+# ============================================================================
+# T044: CHAT MANAGEMENT MCP TOOLS (6 tools routing to Go bridge)
+# ============================================================================
+
+@mcp.tool()
+def archive_chat(chat_jid: str) -> Dict[str, Any]:
+    """
+    Archive a WhatsApp chat via Go bridge.
+
+    Args:
+        chat_jid: WhatsApp JID of the chat to archive
+
+    Returns:
+        Dictionary with success status and message
+    """
+    success, message = go.archive_chat(chat_jid)
+    return {"success": success, "message": message}
+
+
+@mcp.tool()
+def unarchive_chat(chat_jid: str) -> Dict[str, Any]:
+    """
+    Unarchive a WhatsApp chat via Go bridge.
+
+    Args:
+        chat_jid: WhatsApp JID of the chat to unarchive
+
+    Returns:
+        Dictionary with success status and message
+    """
+    success, message = go.unarchive_chat(chat_jid)
+    return {"success": success, "message": message}
+
+
+@mcp.tool()
+def pin_chat(chat_jid: str) -> Dict[str, Any]:
+    """
+    Pin a WhatsApp chat via Go bridge.
+
+    Args:
+        chat_jid: WhatsApp JID of the chat to pin
+
+    Returns:
+        Dictionary with success status and message
+    """
+    success, message = go.pin_chat(chat_jid)
+    return {"success": success, "message": message}
+
+
+@mcp.tool()
+def unpin_chat(chat_jid: str) -> Dict[str, Any]:
+    """
+    Unpin a WhatsApp chat via Go bridge.
+
+    Args:
+        chat_jid: WhatsApp JID of the chat to unpin
+
+    Returns:
+        Dictionary with success status and message
+    """
+    success, message = go.unpin_chat(chat_jid)
+    return {"success": success, "message": message}
+
+
+@mcp.tool()
+def mute_chat(chat_jid: str, duration_seconds: int = 0) -> Dict[str, Any]:
+    """
+    Mute notifications for a WhatsApp chat via Go bridge.
+
+    Args:
+        chat_jid: WhatsApp JID of the chat to mute
+        duration_seconds: Duration in seconds (0 = mute forever)
+
+    Returns:
+        Dictionary with success status and message
+    """
+    success, message = go.mute_chat(chat_jid, duration_seconds)
+    return {"success": success, "message": message}
+
+
+@mcp.tool()
+def unmute_chat(chat_jid: str) -> Dict[str, Any]:
+    """
+    Unmute notifications for a WhatsApp chat via Go bridge.
+
+    Args:
+        chat_jid: WhatsApp JID of the chat to unmute
+
+    Returns:
+        Dictionary with success status and message
+    """
+    success, message = go.unmute_chat(chat_jid)
+    return {"success": success, "message": message}
+
+
+# ============================================================================
+# T045: CONTACT MCP TOOLS (8 tools routing to Go bridge)
+# ============================================================================
+
+@mcp.tool()
+def search_contacts_v2(query: str) -> Dict[str, Any]:
+    """
+    Search WhatsApp contacts by name or phone number via Go bridge.
+
+    Args:
+        query: Search query (name or phone number)
+
+    Returns:
+        Dictionary with list of matching contacts
+    """
+    contacts = go.search_contacts_v2(query)
+    return {"success": True, "contacts": contacts, "count": len(contacts)}
+
+
+@mcp.tool()
+def get_contact_details_v2(jid: str) -> Dict[str, Any]:
+    """
+    Get detailed information about a WhatsApp contact via Go bridge.
+
+    Args:
+        jid: WhatsApp JID of the contact
+
+    Returns:
+        Dictionary with contact details
+    """
+    return go.get_contact_details(jid)
+
+
+@mcp.tool()
+def check_is_on_whatsapp(phone: str) -> Dict[str, Any]:
+    """
+    Check if a phone number is registered on WhatsApp via Go bridge.
+
+    Args:
+        phone: Phone number to check (with country code)
+
+    Returns:
+        Dictionary with WhatsApp status
+    """
+    return go.check_is_on_whatsapp(phone)
+
+
+@mcp.tool()
+def get_profile_picture_v2(jid: str) -> Dict[str, Any]:
+    """
+    Get profile picture URL for a contact via Go bridge.
+
+    Args:
+        jid: WhatsApp JID of the contact
+
+    Returns:
+        Dictionary with profile picture URL
+    """
+    return go.get_profile_picture(jid)
+
+
+@mcp.tool()
+def update_profile_picture_v2(image_path: str) -> Dict[str, Any]:
+    """
+    Update own profile picture via Go bridge.
+
+    Args:
+        image_path: Path to the image file on server
+
+    Returns:
+        Dictionary with success status and message
+    """
+    success, message = go.update_profile_picture(image_path)
+    return {"success": success, "message": message}
+
+
+@mcp.tool()
+def get_contact_status_v2(jid: str) -> Dict[str, Any]:
+    """
+    Get status message for a contact via Go bridge.
+
+    Args:
+        jid: WhatsApp JID of the contact
+
+    Returns:
+        Dictionary with status message
+    """
+    return go.get_contact_status(jid)
+
+
+@mcp.tool()
+def update_profile_status_v2(status_text: str) -> Dict[str, Any]:
+    """
+    Update own WhatsApp status message via Go bridge.
+
+    Args:
+        status_text: New status message text
+
+    Returns:
+        Dictionary with success status and message
+    """
+    success, message = go.update_profile_status(status_text)
+    return {"success": success, "message": message, "status_text": status_text}
+
+
+@mcp.tool()
+def get_linked_devices_v2() -> Dict[str, Any]:
+    """
+    Get list of linked WhatsApp devices via Go bridge.
+
+    Returns:
+        Dictionary with list of linked devices
+    """
+    return go.get_linked_devices()
+
+
+# ============================================================================
+# T049: PRIVACY MCP TOOLS (8 tools routing to Go bridge)
+# ============================================================================
+
+@mcp.tool()
+def block_contact(jid: Optional[str] = None, phone: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Block a WhatsApp contact via Go bridge.
+
+    Args:
+        jid: WhatsApp JID of the contact (optional if phone provided)
+        phone: Phone number of the contact (optional if jid provided)
+
+    Returns:
+        Dictionary with success status and message
+    """
+    success, message = go.block_contact(jid, phone)
+    return {"success": success, "message": message}
+
+
+@mcp.tool()
+def unblock_contact(jid: Optional[str] = None, phone: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Unblock a WhatsApp contact via Go bridge.
+
+    Args:
+        jid: WhatsApp JID of the contact (optional if phone provided)
+        phone: Phone number of the contact (optional if jid provided)
+
+    Returns:
+        Dictionary with success status and message
+    """
+    success, message = go.unblock_contact(jid, phone)
+    return {"success": success, "message": message}
+
+
+@mcp.tool()
+def get_blocked_contacts() -> Dict[str, Any]:
+    """
+    Get list of all blocked WhatsApp contacts via Go bridge.
+
+    Returns:
+        Dictionary with list of blocked contacts
+    """
+    return go.get_blocked_contacts()
+
+
+@mcp.tool()
+def get_privacy_settings() -> Dict[str, Any]:
+    """
+    Get all WhatsApp privacy settings via Go bridge.
+
+    Returns:
+        Dictionary with privacy settings (last_seen, profile_picture, status, online, etc.)
+    """
+    return go.get_privacy_settings()
+
+
+@mcp.tool()
+def update_last_seen_privacy(value: str) -> Dict[str, Any]:
+    """
+    Update last seen privacy setting via Go bridge.
+
+    Args:
+        value: Privacy level ('all', 'contacts', 'match_last_seen', 'none')
+
+    Returns:
+        Dictionary with success status and message
+    """
+    success, message = go.update_last_seen_privacy(value)
+    return {"success": success, "message": message, "setting": "last_seen", "value": value}
+
+
+@mcp.tool()
+def update_profile_picture_privacy(value: str) -> Dict[str, Any]:
+    """
+    Update profile picture privacy setting via Go bridge.
+
+    Args:
+        value: Privacy level ('all', 'contacts', 'match_last_seen', 'none')
+
+    Returns:
+        Dictionary with success status and message
+    """
+    success, message = go.update_profile_picture_privacy(value)
+    return {"success": success, "message": message, "setting": "profile_picture", "value": value}
+
+
+@mcp.tool()
+def update_status_privacy(value: str) -> Dict[str, Any]:
+    """
+    Update status privacy setting via Go bridge.
+
+    Args:
+        value: Privacy level ('all', 'contacts', 'match_last_seen', 'none')
+
+    Returns:
+        Dictionary with success status and message
+    """
+    success, message = go.update_status_privacy(value)
+    return {"success": success, "message": message, "setting": "status", "value": value}
+
+
+@mcp.tool()
+def update_online_privacy(value: str) -> Dict[str, Any]:
+    """
+    Update online privacy setting via Go bridge.
+
+    Args:
+        value: Privacy level ('all', 'match_last_seen')
+
+    Returns:
+        Dictionary with success status and message
+    """
+    success, message = go.update_online_privacy(value)
+    return {"success": success, "message": message, "setting": "online", "value": value}
+
+
+# ============================================================================
+# T053: BUSINESS MCP TOOLS (3 tools routing to Go/Baileys bridges)
+# ============================================================================
+
+@mcp.tool()
+def get_business_profile(jid: str) -> Dict[str, Any]:
+    """
+    Get business profile information via Go bridge.
+
+    Args:
+        jid: WhatsApp JID of the business account
+
+    Returns:
+        Dictionary with business profile details (description, category, address, website, email)
+    """
+    return go.get_business_profile(jid)
+
+
+@mcp.tool()
+def get_business_catalog(jid: str) -> Dict[str, Any]:
+    """
+    Get business product catalog via Baileys bridge (BAILEYS_EXCLUSIVE).
+
+    Args:
+        jid: WhatsApp JID of the business account
+
+    Returns:
+        Dictionary with catalog information and product count
+    """
+    import backends.baileys_client as baileys
+    return baileys.get_business_catalog(jid)
+
+
+@mcp.tool()
+def get_product_details(jid: str, product_id: str) -> Dict[str, Any]:
+    """
+    Get detailed information about a specific product from business catalog via Baileys bridge (BAILEYS_EXCLUSIVE).
+
+    Args:
+        jid: WhatsApp JID of the business account
+        product_id: Product ID to retrieve
+
+    Returns:
+        Dictionary with product details (name, description, price, images, availability)
+    """
+    import backends.baileys_client as baileys
+    return baileys.get_product_details(jid, product_id)
+
+
+# ============================================================================
+# T055: NEWSLETTER MCP TOOLS (5 tools routing to Go bridge)
+# ============================================================================
+
+@mcp.tool()
+def subscribe_to_newsletter(jid: str) -> Dict[str, Any]:
+    """
+    Subscribe to a WhatsApp newsletter via Go bridge.
+
+    Args:
+        jid: WhatsApp JID of the newsletter
+
+    Returns:
+        Dictionary with success status and message
+    """
+    success, message = go.subscribe_to_newsletter(jid)
+    return {"success": success, "message": message, "jid": jid if success else None}
+
+
+@mcp.tool()
+def unsubscribe_from_newsletter(jid: str) -> Dict[str, Any]:
+    """
+    Unsubscribe from a WhatsApp newsletter via Go bridge.
+
+    Args:
+        jid: WhatsApp JID of the newsletter
+
+    Returns:
+        Dictionary with success status and message
+    """
+    success, message = go.unsubscribe_from_newsletter(jid)
+    return {"success": success, "message": message, "jid": jid if success else None}
+
+
+@mcp.tool()
+def create_newsletter(name: str, description: str = "") -> Dict[str, Any]:
+    """
+    Create a new WhatsApp newsletter via Go bridge.
+
+    Args:
+        name: Newsletter name (required)
+        description: Newsletter description (optional)
+
+    Returns:
+        Dictionary with creation result, newsletter JID, and invite URL
+    """
+    return go.create_newsletter(name, description)
+
+
+@mcp.tool()
+def get_newsletter_info(jid: str) -> Dict[str, Any]:
+    """
+    Get metadata and information about a WhatsApp newsletter via Go bridge.
+
+    Args:
+        jid: WhatsApp JID of the newsletter
+
+    Returns:
+        Dictionary with newsletter metadata (name, description, subscriber count, creation time, owner, etc.)
+    """
+    return go.get_newsletter_metadata(jid)
+
+
+@mcp.tool()
+def react_to_newsletter_post(jid: str, message_id: str, emoji: str) -> Dict[str, Any]:
+    """
+    React to a newsletter post with an emoji via Go bridge.
+
+    Args:
+        jid: WhatsApp JID of the newsletter
+        message_id: ID of the newsletter message/post to react to
+        emoji: Emoji to react with (e.g., "👍", "❤️", "🔥")
+
+    Returns:
+        Dictionary with success status and message
+    """
+    success, message = go.react_to_newsletter_message(jid, message_id, emoji)
+    return {"success": success, "message": message, "message_id": message_id if success else None}
+
 
 # ============================================================================
 # RUN SERVER
