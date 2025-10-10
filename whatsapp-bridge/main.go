@@ -397,9 +397,24 @@ func (store *MessageStore) GetMessageStats() (MessageStatsResponse, error) {
 	}
 
 	// Get oldest and newest message timestamps
-	err = store.db.QueryRow("SELECT MIN(timestamp), MAX(timestamp) FROM messages").Scan(&stats.OldestMessage, &stats.NewestMessage)
+	var oldestTimeStr, newestTimeStr sql.NullString
+	err = store.db.QueryRow("SELECT MIN(timestamp), MAX(timestamp) FROM messages").Scan(&oldestTimeStr, &newestTimeStr)
 	if err != nil && err != sql.ErrNoRows {
 		return stats, err
+	}
+
+	// Only set timestamps if they're valid (not NULL) and parse them
+	// SQLite stores timestamps as "2006-01-02 15:04:05-07:00" format
+	timestampFormat := "2006-01-02 15:04:05-07:00"
+	if oldestTimeStr.Valid && oldestTimeStr.String != "" {
+		if t, err := time.Parse(timestampFormat, oldestTimeStr.String); err == nil {
+			stats.OldestMessage = t
+		}
+	}
+	if newestTimeStr.Valid && newestTimeStr.String != "" {
+		if t, err := time.Parse(timestampFormat, newestTimeStr.String); err == nil {
+			stats.NewestMessage = t
+		}
 	}
 
 	return stats, nil
@@ -1399,6 +1414,7 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 		// Get stats
 		stats, err := messageStore.GetMessageStats()
 		if err != nil {
+			fmt.Printf("ERROR in /api/stats: %v\n", err)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(MessageStatsResponse{
