@@ -1,0 +1,103 @@
+name: Security Scanning
+
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main, develop]
+  schedule:
+    # Run daily security scans at 2 AM UTC
+    - cron: '0 2 * * *'
+
+# Cancel in-progress runs for same PR (FR-016)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write  # Required for SARIF upload
+
+jobs:
+  # ====================
+  # SAST with Semgrep
+  # ====================
+  sast:
+    name: sast
+    runs-on: ubuntu-latest
+    # Skip draft PRs (FR-019)
+    if: github.event.pull_request.draft == false || github.event_name == 'push' || github.event_name == 'schedule'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep (FR-021)
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: auto  # Use Semgrep's default ruleset (2,800+ rules)
+          # Generate SARIF for GitHub Security tab integration
+          publishToken: ${{ secrets.SEMGREP_APP_TOKEN || '' }}
+          publishDeployment: ${{ secrets.SEMGREP_DEPLOYMENT_ID || '' }}
+        env:
+          SEMGREP_TIMEOUT: 300  # 5 minute timeout per file
+
+      # SARIF upload happens automatically via semgrep-action
+      # Results appear in GitHub Security tab with annotations on PR
+
+  # ====================
+  # Dependency Vulnerability Scanning with Trivy
+  # ====================
+  dependencies:
+    name: dependencies
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false || github.event_name == 'push' || github.event_name == 'schedule'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy dependency scan (FR-022)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM,LOW'
+          exit-code: '1'  # Fail CI on vulnerabilities found
+
+      - name: Upload Trivy results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()  # Upload even if scan fails
+        with:
+          sarif_file: 'trivy-results.sarif'
+          category: 'dependencies'
+
+  # ====================
+  # Secret Detection with Gitleaks
+  # ====================
+  secrets:
+    name: secrets
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false || github.event_name == 'push' || github.event_name == 'schedule'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full history for comprehensive scan
+
+      - name: Run Gitleaks secret scan (FR-023)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: false  # Disable PR comments, use SARIF instead
+
+      - name: Upload Gitleaks results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: results.sarif
+          category: 'secrets'

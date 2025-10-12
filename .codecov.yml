@@ -1,0 +1,18 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 70%
+        threshold: 1%
+    patch:
+      default:
+        target: 70%
+
+comment:
+  layout: "reach, diff, flags, files"
+  behavior: default
+
+ignore:
+  - "tests/**"
+  - "**/__pycache__/**"
+  - "**/test_*.py"
