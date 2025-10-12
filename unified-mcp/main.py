@@ -30,7 +30,7 @@ from whatsapp import (
     mark_community_as_read as whatsapp_mark_community_as_read
 )
 from backends import go_client, baileys_client
-from sync import sync_baileys_to_go, clear_baileys_temp_data, get_baileys_sync_status
+from sync import sync_baileys_to_go, sync_all_chats
 import backends.go_client as go
 
 # Initialize FastMCP server
@@ -262,13 +262,32 @@ def sync_history_to_database() -> Dict[str, Any]:
     Returns:
         Dictionary with sync results
     """
-    added, skipped, status_msg = sync_baileys_to_go()
+    # Call sync_all_chats() to sync messages for ALL chats
+    results = sync_all_chats()
+
+    # Aggregate results
+    total_synced = 0
+    total_deduplicated = 0
+    total_chats = len(results)
+    failed_chats = 0
+
+    for chat_jid, result in results.items():
+        if result.success:
+            total_synced += result.messages_synced
+            total_deduplicated += result.messages_deduplicated
+        else:
+            failed_chats += 1
+
+    success = failed_chats == 0
 
     return {
-        "success": added >= 0,
-        "messages_added": added,
-        "messages_skipped": skipped,
-        "message": status_msg
+        "success": success,
+        "messages_added": total_synced,
+        "messages_deduplicated": total_deduplicated,
+        "chats_synced": total_chats,
+        "chats_failed": failed_chats,
+        "message": f"Synced {total_synced} messages from {total_chats} chats ({failed_chats} failed)" if success
+                   else f"Partial sync: {total_synced} messages from {total_chats - failed_chats}/{total_chats} chats"
     }
 
 @mcp.tool()
@@ -352,7 +371,7 @@ def mark_community_as_read_with_history(
 
     # Step 5: Clean up Baileys temp data
     print("5️⃣ Cleaning up temporary data...")
-    if clear_baileys_temp_data():
+    if baileys_client.clear_temp_data():
         result["steps"].append({"step": "cleanup", "status": "✅ Temp data cleared"})
     else:
         result["steps"].append({"step": "cleanup", "status": "⚠️ Failed to clear temp data"})
@@ -852,9 +871,12 @@ def mark_message_read_v2(chat_jid: str, message_id: str) -> Dict[str, Any]:
     Returns:
         Dictionary with success status and message
     """
-    # Use existing mark_as_read function with single message ID
-    success, message = go_client.mark_as_read(chat_jid, [message_id])
-    return {"success": success, "message": message}
+    # Phase 3: T012 - Updated to handle new 4-value return (includes count and error_code)
+    success, message, count, error_code = go_client.mark_as_read(chat_jid, [message_id])
+    result = {"success": success, "message": message, "count": count}
+    if error_code:
+        result["error_code"] = error_code
+    return result
 
 
 @mcp.tool()
@@ -862,15 +884,26 @@ def mark_chat_read_v2(chat_jid: str) -> Dict[str, Any]:
     """
     Mark all messages in a chat as read via Go bridge.
 
+    Phase 3: T011-T013 - Fixed to properly handle mark-all functionality with structured responses.
+
     Args:
         chat_jid: WhatsApp JID of the chat
 
     Returns:
-        Dictionary with success status and message
+        Dictionary with success status, message, count, and optional error_code
     """
-    # Use existing mark_as_read function with empty message list (mark all)
-    success, message = go_client.mark_as_read(chat_jid, [])
-    return {"success": success, "message": message}
+    # Phase 3: T012 - Updated to handle new 4-value return (includes count and error_code)
+    success, message, count, error_code = go_client.mark_as_read(chat_jid, [])
+    result = {"success": success, "message": message, "count": count}
+
+    # Phase 3: T013 - Handle EMPTY_CHAT case (which is success=true but count=0)
+    if error_code:
+        result["error_code"] = error_code
+        if error_code == "EMPTY_CHAT":
+            # This is not an error - just informational
+            result["message"] = "Chat has no messages to mark as read"
+
+    return result
 
 
 @mcp.tool()

@@ -1,0 +1,75 @@
+"""Package initialization template for unified_mcp subpackages.
+
+This template shows the structure for __init__.py files in the refactored package.
+Demonstrates proper package-relative imports and public API exports.
+
+Enforces: FR-001, FR-002, FR-003, FR-004, FR-005
+Success Criteria: SC-001, SC-002, SC-003
+"""
+
+# =============================================================================
+# Package-Relative Imports
+# =============================================================================
+# FR-003: Use package-relative imports (from . import)
+# Eliminates need for sys.path hacks
+
+# Example for unified_mcp/backends/__init__.py:
+# from .go_client import GoClient, send_message_go
+# from .baileys_client import BaileysClient, sync_history_baileys
+# from .health import check_backend_health
+
+# Example for unified_mcp/__init__.py (root package):
+# from . import backends
+# from . import routing
+# from . import sync
+# from .constants import *
+
+# =============================================================================
+# Public API Exports
+# =============================================================================
+# FR-004: Define explicit __all__ for public API
+# Helps IDEs with auto-completion and controls what gets imported with "from package import *"
+
+# Example for unified_mcp/backends/__init__.py:
+# __all__ = [
+#     "GoClient",
+#     "BaileysClient",
+#     "send_message_go",
+#     "sync_history_baileys",
+#     "check_backend_health",
+# ]
+
+# =============================================================================
+# Module Docstring
+# =============================================================================
+# FR-021: Every module (including __init__.py) must have docstring
+# FR-022: Docstrings must follow Google style
+
+"""Example docstring for backends subpackage.
+
+This subpackage provides HTTP clients for WhatsApp backend bridges:
+- GoClient: whatsmeow bridge (port 8080)
+- BaileysClient: Baileys.js bridge (port 8081)
+
+Modules:
+    go_client: Go bridge HTTP client operations
+    baileys_client: Baileys bridge HTTP client operations
+    health: Backend health monitoring
+
+Usage:
+    >>> from unified_mcp.backends import GoClient
+    >>> client = GoClient()
+    >>> response = client.send_message("123@s.whatsapp.net", "Hello")
+"""
+
+# =============================================================================
+# Validation Criteria (From contracts/)
+# =============================================================================
+# ✅ SC-001: Can run `python -m unified_mcp.main` without errors
+# ✅ SC-002: All 101 tests pass without sys.path modifications
+# ✅ SC-003: IDE auto-complete works for package imports
+# ✅ FR-001: All directories with .py files have __init__.py
+# ✅ FR-002: No sys.path manipulation anywhere in codebase
+# ✅ FR-003: All imports use package-relative or absolute syntax
+# ✅ FR-004: Package installable via `pip install -e .`
+# ✅ FR-005: All existing tests pass with new structure

@@ -1,0 +1,20 @@
+22:01:12.364[36m [Client INFO] Starting WhatsApp client...[0m
+22:01:12.957[36m [Client INFO] Successfully authenticated[0m
+22:01:13.368[36m [Client INFO] Connected to WhatsApp[0m
+22:01:13.422[36m [Client INFO] Using existing chat name for 120363040187584632@g.us: TL - Amministrazione[0m
+[2025-10-12 21:55:16] ← 181772092440675@lid: Autogestione
+22:01:13.434[36m [Client INFO] Using existing chat name for 120363040187584632@g.us: TL - Amministrazione[0m
+[2025-10-12 21:56:31] ← 126134616338497@lid: Questo nn era ancora successo 😂
+22:01:13.448[36m [Client INFO] Using existing chat name for 120363040187584632@g.us: TL - Amministrazione[0m
+[2025-10-12 21:56:50] ← 126134616338497@lid: Son molto carini cmq ma spieghiamoglielo per bene
+22:01:13.462[36m [Client INFO] Marked 2 messages as read in chat 120363045187326551@g.us[0m
+22:01:13.469[36m [Client INFO] Using existing chat name for 120363040187584632@g.us: TL - Amministrazione[0m
+[2025-10-12 21:57:34] ← 181772092440675@lid: Si spieghiamo che pagano la notte in più
+22:01:13.586[36m [Client INFO] Using existing chat name for 120363040187584632@g.us: TL - Amministrazione[0m
+[2025-10-12 21:59:04] ← 181772092440675@lid: Cmq vrbo quest' anno c ha mandato i peggio rincoglioniti
+
+✓ Connected to WhatsApp! Type 'help' for commands.
+22:01:14.800[36m [Client INFO] Populating contacts from WhatsApp...[0m
+Populated 2736 contacts into the database
+Starting REST API server on :8080...
+REST server is running. Press Ctrl+C to disconnect and exit.

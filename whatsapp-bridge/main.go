@@ -82,6 +82,8 @@ func NewMessageStore() (*MessageStore, error) {
 			content TEXT,
 			timestamp TIMESTAMP,
 			is_from_me BOOLEAN,
+			is_read BOOLEAN DEFAULT 0,
+			read_timestamp TIMESTAMP,
 			media_type TEXT,
 			filename TEXT,
 			url TEXT,
@@ -96,6 +98,26 @@ func NewMessageStore() (*MessageStore, error) {
 	if err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to create tables: %v", err)
+	}
+
+	// Add is_read column to existing database (migration)
+	_, _ = db.Exec(`ALTER TABLE messages ADD COLUMN is_read BOOLEAN DEFAULT 0`)
+	_, _ = db.Exec(`ALTER TABLE messages ADD COLUMN read_timestamp TIMESTAMP`)
+
+	// Update existing messages: mark outgoing as read, incoming as unread
+	_, _ = db.Exec(`UPDATE messages SET is_read = CASE WHEN is_from_me = 1 THEN 1 ELSE 0 END WHERE is_read IS NULL`)
+
+	// Create performance indexes
+	_, err = db.Exec(`
+		CREATE INDEX IF NOT EXISTS idx_messages_chat_timestamp
+		ON messages(chat_jid, timestamp DESC);
+
+		CREATE INDEX IF NOT EXISTS idx_messages_unread
+		ON messages(chat_jid, is_read, timestamp DESC);
+	`)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to create index: %v", err)
 	}
 
 	return &MessageStore{db: db}, nil
@@ -132,11 +154,14 @@ func (store *MessageStore) StoreMessage(id, chatJID, sender, content string, tim
 		return nil
 	}
 
+	// Outgoing messages are automatically marked as read
+	isRead := isFromMe
+
 	_, err := store.db.Exec(
-		`INSERT OR REPLACE INTO messages 
-		(id, chat_jid, sender, content, timestamp, is_from_me, media_type, filename, url, media_key, file_sha256, file_enc_sha256, file_length) 
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, chatJID, sender, content, timestamp, isFromMe, mediaType, filename, url, mediaKey, fileSHA256, fileEncSHA256, fileLength,
+		`INSERT OR REPLACE INTO messages
+		(id, chat_jid, sender, content, timestamp, is_from_me, is_read, media_type, filename, url, media_key, file_sha256, file_enc_sha256, file_length)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, chatJID, sender, content, timestamp, isFromMe, isRead, mediaType, filename, url, mediaKey, fileSHA256, fileEncSHA256, fileLength,
 	)
 	return err
 }
@@ -173,7 +198,17 @@ func (store *MessageStore) GetMessages(chatJID string, limit int) ([]Message, er
 	rows, err := store.db.Query(
 		`SELECT m.sender, COALESCE(c.name, m.sender) as sender_name, m.content, m.timestamp, m.is_from_me, m.media_type, m.filename
 		FROM messages m
-		LEFT JOIN contacts c ON m.sender = SUBSTR(c.jid, 1, INSTR(c.jid, '@') - 1)
+		LEFT JOIN contacts c ON (
+			-- Handle different sender formats
+			CASE
+				-- If sender has @ symbol, extract the number part for comparison
+				WHEN INSTR(m.sender, '@') > 0 THEN
+					SUBSTR(m.sender, 1, INSTR(m.sender, '@') - 1) = SUBSTR(c.jid, 1, INSTR(c.jid, '@') - 1)
+				-- If sender is plain number, match with the number part of contact JID
+				ELSE
+					m.sender = SUBSTR(c.jid, 1, INSTR(c.jid, '@') - 1)
+			END
+		)
 		WHERE m.chat_jid = ?
 		ORDER BY m.timestamp DESC
 		LIMIT ?`,
@@ -226,11 +261,32 @@ func (store *MessageStore) QueryMessages(req QueryMessagesRequest) ([]MessageRes
 	// Build dynamic query
 	query := `
 		SELECT m.id, m.chat_jid, COALESCE(ch.name, m.chat_jid) as chat_name,
-		       m.sender, COALESCE(c.name, m.sender) as sender_name,
+		       m.sender,
+		       COALESCE(
+		           -- Try to get the name from any contact with matching number
+		           (SELECT name FROM contacts c2
+		            WHERE SUBSTR(m.sender, 1, INSTR(m.sender, '@') - 1) = SUBSTR(c2.jid, 1, INSTR(c2.jid, '@') - 1)
+		              AND c2.name != c2.phone_number
+		            LIMIT 1),
+		           -- Otherwise use the direct match
+		           c.name,
+		           -- Fallback to sender
+		           m.sender
+		       ) as sender_name,
 		       m.content, m.timestamp, m.is_from_me, m.media_type, m.filename
 		FROM messages m
-		LEFT JOIN contacts c ON m.sender = SUBSTR(c.jid, 1, INSTR(c.jid, '@') - 1)
 		LEFT JOIN chats ch ON m.chat_jid = ch.jid
+		LEFT JOIN contacts c ON (
+			-- Handle different sender formats
+			CASE
+				-- If sender has @ symbol, extract the number part for comparison
+				WHEN INSTR(m.sender, '@') > 0 THEN
+					SUBSTR(m.sender, 1, INSTR(m.sender, '@') - 1) = SUBSTR(c.jid, 1, INSTR(c.jid, '@') - 1)
+				-- If sender is plain number, match with the number part of contact JID
+				ELSE
+					m.sender = SUBSTR(c.jid, 1, INSTR(c.jid, '@') - 1)
+			END
+		)
 		WHERE 1=1
 	`
 	countQuery := "SELECT COUNT(*) FROM messages m WHERE 1=1"
@@ -260,6 +316,15 @@ func (store *MessageStore) QueryMessages(req QueryMessagesRequest) ([]MessageRes
 		contentPattern := "%" + req.Content + "%"
 		args = append(args, contentPattern)
 		countArgs = append(countArgs, contentPattern)
+	}
+
+	// Add default time filter for recent messages (last 7 days) if no time filters provided
+	if req.AfterTime == "" && req.BeforeTime == "" {
+		sevenDaysAgo := time.Now().AddDate(0, 0, -7)
+		query += " AND m.timestamp > ?"
+		countQuery += " AND m.timestamp > ?"
+		args = append(args, sevenDaysAgo)
+		countArgs = append(countArgs, sevenDaysAgo)
 	}
 
 	if req.AfterTime != "" {
@@ -292,11 +357,17 @@ func (store *MessageStore) QueryMessages(req QueryMessagesRequest) ([]MessageRes
 		countArgs = append(countArgs, req.MediaTypeFilter)
 	}
 
-	// Get total count
+	// Get total count (skip for first page to improve performance)
 	var total int
-	err := store.db.QueryRow(countQuery, countArgs...).Scan(&total)
-	if err != nil {
-		return nil, 0, err
+	if req.Offset > 0 {
+		// Only count when paginating beyond first page
+		err := store.db.QueryRow(countQuery, countArgs...).Scan(&total)
+		if err != nil {
+			return nil, 0, err
+		}
+	} else {
+		// Return -1 for first page (indicates count not computed)
+		total = -1
 	}
 
 	// Add ordering and pagination
@@ -660,10 +731,13 @@ func extractMediaInfo(msg *waProto.Message) (mediaType string, filename string, 
 func handleMessage(client *whatsmeow.Client, messageStore *MessageStore, msg *events.Message, logger waLog.Logger) {
 	// Save message to database
 	chatJID := msg.Info.Chat.String()
-	sender := msg.Info.Sender.User
+	// CRITICAL FIX: Store full sender JID (with @lid or @s.whatsapp.net), not just User part
+	// This ensures mark-as-read can properly parse the sender JID
+	sender := msg.Info.Sender.String()
 
 	// Get appropriate chat name (pass nil for conversation since we don't have one for regular messages)
-	name := GetChatName(client, messageStore, msg.Info.Chat, chatJID, nil, sender, logger)
+	// Pass just User part for backwards compatibility with GetChatName
+	name := GetChatName(client, messageStore, msg.Info.Chat, chatJID, nil, msg.Info.Sender.User, logger)
 
 	// Update chat in database with the message timestamp (keeps last message time updated)
 	err := messageStore.StoreChat(chatJID, name, msg.Info.Timestamp)
@@ -741,8 +815,10 @@ type MarkAsReadRequest struct {
 
 // MarkAsReadResponse represents the response for the mark as read API
 type MarkAsReadResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
+	Success   bool   `json:"success"`
+	Message   string `json:"message"`
+	Count     int    `json:"count"`               // Number of messages marked as read
+	ErrorCode string `json:"error_code,omitempty"` // Machine-readable error code (Phase 2: T006)
 }
 
 // Store additional media info in the database
@@ -916,6 +992,75 @@ func downloadMedia(client *whatsmeow.Client, messageStore *MessageStore, message
 	return true, mediaType, filename, absPath, nil
 }
 
+// MessageWithTimestamp represents a message ID with its timestamp
+type MessageWithTimestamp struct {
+	ID        string
+	Timestamp time.Time
+}
+
+// Query all message IDs for a chat (Phase 3: T008)
+// Returns message IDs with timestamps grouped by sender for batching
+func (store *MessageStore) queryAllMessageIDs(chatJID string) (map[string][]MessageWithTimestamp, error) {
+	// Use the performance index we created in Phase 2
+	rows, err := store.db.Query(`
+		SELECT id, sender, timestamp
+		FROM messages
+		WHERE chat_jid = ?
+		ORDER BY timestamp DESC
+	`, chatJID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query messages: %w", err)
+	}
+	defer rows.Close()
+
+	// Group messages by sender (whatsmeow MarkRead requires same sender per call)
+	messagesBySender := make(map[string][]MessageWithTimestamp)
+	for rows.Next() {
+		var id, sender string
+		var timestamp time.Time
+		if err := rows.Scan(&id, &sender, &timestamp); err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+		messagesBySender[sender] = append(messagesBySender[sender], MessageWithTimestamp{
+			ID:        id,
+			Timestamp: timestamp,
+		})
+	}
+
+	return messagesBySender, nil
+}
+
+// Query timestamps for specific message IDs (for explicit mark-as-read)
+func (store *MessageStore) queryMessageTimestamps(chatJID string, messageIDs []string) (time.Time, error) {
+	if len(messageIDs) == 0 {
+		return time.Time{}, fmt.Errorf("no message IDs provided")
+	}
+
+	// Build placeholders for IN clause
+	placeholders := make([]string, len(messageIDs))
+	args := make([]interface{}, len(messageIDs)+1)
+	args[0] = chatJID
+	for i, id := range messageIDs {
+		placeholders[i] = "?"
+		args[i+1] = id
+	}
+
+	// Query for max timestamp
+	query := fmt.Sprintf(`
+		SELECT MAX(timestamp)
+		FROM messages
+		WHERE chat_jid = ? AND id IN (%s)
+	`, strings.Join(placeholders, ","))
+
+	var maxTimestamp time.Time
+	err := store.db.QueryRow(query, args...).Scan(&maxTimestamp)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to query timestamps: %w", err)
+	}
+
+	return maxTimestamp, nil
+}
+
 // Extract direct path from a WhatsApp media URL
 func extractDirectPathFromURL(url string) string {
 	// The direct path is typically in the URL, we need to extract it
@@ -941,7 +1086,7 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 	// Handler for health check
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		// Get database path
-		dbPath := "data/messages.db"
+		dbPath := "store/messages.db"
 
 		// Calculate uptime (simple approximation - would need startTime global var for accuracy)
 		uptime := 0 // Placeholder - would track actual uptime in production
@@ -1081,30 +1226,208 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 
 		// Validate request
 		if req.ChatJID == "" {
-			http.Error(w, "Chat JID is required", http.StatusBadRequest)
-			return
-		}
-
-		if len(req.MessageIDs) == 0 {
-			http.Error(w, "At least one message ID is required", http.StatusBadRequest)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(MarkAsReadResponse{
+				Success:   false,
+				Message:   "Chat JID is required",
+				Count:     0,
+				ErrorCode: "INVALID_JID",
+			})
 			return
 		}
 
 		// Parse chat JID
 		chatJID, err := types.ParseJID(req.ChatJID)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Invalid chat JID: %v", err), http.StatusBadRequest)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(MarkAsReadResponse{
+				Success:   false,
+				Message:   fmt.Sprintf("Invalid chat JID format: %v", err),
+				Count:     0,
+				ErrorCode: "INVALID_JID",
+			})
 			return
 		}
 
+		// Phase 3: T007, T009, T010 - Handle empty message_ids (mark all messages)
+		if len(req.MessageIDs) == 0 {
+			// Phase 3: T014 - Enhanced logging for mark-all operations
+			startTime := time.Now()
+			fmt.Printf("[MarkAll] Starting mark-all operation for chat_jid=%s\n", req.ChatJID)
+
+			// Query all message IDs from database (Phase 3: T009)
+			messagesBySender, err := messageStore.queryAllMessageIDs(req.ChatJID)
+			if err != nil {
+				fmt.Printf("[MarkAll] ERROR: Database query failed for chat_jid=%s: %v\n", req.ChatJID, err)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(MarkAsReadResponse{
+					Success:   false,
+					Message:   fmt.Sprintf("Failed to query messages: %v", err),
+					Count:     0,
+					ErrorCode: "DATABASE_ERROR",
+				})
+				return
+			}
+
+			// Check if chat has no messages
+			totalMessages := 0
+			for _, ids := range messagesBySender {
+				totalMessages += len(ids)
+			}
+			if totalMessages == 0 {
+				fmt.Printf("[MarkAll] Chat has no messages: chat_jid=%s, count=0\n", req.ChatJID)
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(MarkAsReadResponse{
+					Success:   true,
+					Message:   "Chat has no messages to mark",
+					Count:     0,
+					ErrorCode: "EMPTY_CHAT",
+				})
+				return
+			}
+
+			// Phase 3: T010 - Batch messages by sender (1000 per batch)
+			fmt.Printf("[MarkAll] Processing %d messages from %d senders for chat_jid=%s\n",
+				totalMessages, len(messagesBySender), req.ChatJID)
+
+			markedCount := 0
+			failedCount := 0
+			batchCount := 0
+
+			for sender, ids := range messagesBySender {
+				// CRITICAL FIX: Skip messages where sender == group JID (invalid history sync data)
+				// These are messages where historySync didn't provide a Participant field
+				if chatJID.Server == "g.us" && (sender == chatJID.User || sender == chatJID.String()) {
+					fmt.Printf("[MarkAll] SKIP: Skipping %d messages with invalid sender=%s (group JID cannot be sender)\n",
+						len(ids), sender)
+					continue
+				}
+
+				// Parse sender JID - handle both old format (without @) and new format (with @)
+				var senderJID types.JID
+				if sender != "" {
+					// CRITICAL FIX: Check if sender already has @ suffix (new format)
+					if strings.Contains(sender, "@") {
+						// New format - sender is already a full JID like "126134616338497@lid"
+						senderJID, err = types.ParseJID(sender)
+					} else {
+						// Old format - sender is just the User part like "126134616338497"
+						// Need to reconstruct the proper JID
+						if chatJID.Server == "g.us" {
+							// Group chat - individual participants use @lid format
+							senderJID, err = types.ParseJID(sender + "@lid")
+							if err != nil {
+								// Fallback to @s.whatsapp.net if @lid doesn't work
+								senderJID, err = types.ParseJID(sender + "@s.whatsapp.net")
+							}
+						} else {
+							// Direct chat - use standard WhatsApp format
+							senderJID, err = types.ParseJID(sender + "@s.whatsapp.net")
+						}
+					}
+
+					if err != nil {
+						failedCount += len(ids)
+						fmt.Printf("[MarkAll] ERROR: Invalid sender JID sender=%s, skipping %d messages: %v\n",
+							sender, len(ids), err)
+						continue
+					}
+				}
+
+				// Batch in groups of 1000 messages
+				for i := 0; i < len(ids); i += 1000 {
+					end := i + 1000
+					if end > len(ids) {
+						end = len(ids)
+					}
+					batch := ids[i:end]
+					batchCount++
+
+					// Convert to MessageID types and find max timestamp
+					messageIDs := make([]types.MessageID, len(batch))
+					var maxTimestamp time.Time
+					for j, msgWithTS := range batch {
+						messageIDs[j] = types.MessageID(msgWithTS.ID)
+						// Keep track of the newest timestamp in this batch
+						if msgWithTS.Timestamp.After(maxTimestamp) {
+							maxTimestamp = msgWithTS.Timestamp
+						}
+					}
+
+					// Mark this batch as read with the actual timestamp of the newest message
+					err = client.MarkRead(messageIDs, maxTimestamp, chatJID, senderJID)
+					if err != nil {
+						failedCount += len(batch)
+						fmt.Printf("[MarkAll] ERROR: Failed to mark batch batch_num=%d, batch_size=%d, sender=%s: %v\n",
+							batchCount, len(batch), sender, err)
+						continue
+					}
+
+					markedCount += len(batch)
+					fmt.Printf("[MarkAll] Marked batch batch_num=%d, batch_size=%d, sender=%s, progress=%d/%d\n",
+						batchCount, len(batch), sender, markedCount, totalMessages)
+				}
+			}
+
+			// Phase 3: T014 - Final summary log
+			duration := time.Since(startTime)
+			fmt.Printf("[MarkAll] SUMMARY: chat_jid=%s, total_messages=%d, marked=%d, failed=%d, batches=%d, duration=%v\n",
+				req.ChatJID, totalMessages, markedCount, failedCount, batchCount, duration)
+
+			// Update database to mark all messages in chat as read
+			_, err = messageStore.db.Exec(`
+				UPDATE messages
+				SET is_read = 1, read_timestamp = ?
+				WHERE chat_jid = ? AND is_from_me = 0`,
+				time.Now(), req.ChatJID)
+			if err != nil {
+				fmt.Printf("WARNING: Failed to update is_read in database for chat %s: %v\n", req.ChatJID, err)
+			}
+
+			// Return success with count
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(MarkAsReadResponse{
+				Success: true,
+				Message: fmt.Sprintf("Marked %d message(s) as read", markedCount),
+				Count:   markedCount,
+			})
+			return
+		}
+
+		// Explicit message IDs provided (existing behavior)
 		// Parse sender JID if provided
 		var senderJID types.JID
 		if req.Sender != "" {
 			senderJID, err = types.ParseJID(req.Sender)
 			if err != nil {
-				http.Error(w, fmt.Sprintf("Invalid sender JID: %v", err), http.StatusBadRequest)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(MarkAsReadResponse{
+					Success:   false,
+					Message:   fmt.Sprintf("Invalid sender JID: %v", err),
+					Count:     0,
+					ErrorCode: "INVALID_JID",
+				})
 				return
 			}
+		}
+
+		// Query the actual timestamps of the messages being marked
+		maxTimestamp, err := messageStore.queryMessageTimestamps(req.ChatJID, req.MessageIDs)
+		if err != nil {
+			fmt.Printf("Failed to query message timestamps: %v\n", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(MarkAsReadResponse{
+				Success:   false,
+				Message:   fmt.Sprintf("Failed to query message timestamps: %v", err),
+				Count:     0,
+				ErrorCode: "DATABASE_ERROR",
+			})
+			return
 		}
 
 		// Convert string IDs to MessageID types
@@ -1113,20 +1436,34 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 			messageIDs[i] = types.MessageID(id)
 		}
 
-		// Send read receipt for the messages
-		err = client.MarkRead(messageIDs, time.Now(), chatJID, senderJID)
+		// Send read receipt for the messages with the actual timestamp of the newest message
+		err = client.MarkRead(messageIDs, maxTimestamp, chatJID, senderJID)
 		if err != nil {
 			fmt.Printf("Failed to mark messages as read: %v\n", err)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(MarkAsReadResponse{
-				Success: false,
-				Message: fmt.Sprintf("Failed to mark messages as read: %v", err),
+				Success:   false,
+				Message:   fmt.Sprintf("Failed to mark messages as read: %v", err),
+				Count:     0,
+				ErrorCode: "WHATSAPP_API_ERROR",
 			})
 			return
 		}
 
 		fmt.Printf("Marked %d message(s) as read in chat %s\n", len(req.MessageIDs), req.ChatJID)
+
+		// Update database to mark messages as read
+		for _, msgID := range req.MessageIDs {
+			_, err = messageStore.db.Exec(`
+				UPDATE messages
+				SET is_read = 1, read_timestamp = ?
+				WHERE id = ? AND chat_jid = ?`,
+				time.Now(), msgID, req.ChatJID)
+			if err != nil {
+				fmt.Printf("WARNING: Failed to update is_read in database for message %s: %v\n", msgID, err)
+			}
+		}
 
 		// Set response headers
 		w.Header().Set("Content-Type", "application/json")
@@ -1135,6 +1472,7 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 		json.NewEncoder(w).Encode(MarkAsReadResponse{
 			Success: true,
 			Message: fmt.Sprintf("Marked %d message(s) as read", len(req.MessageIDs)),
+			Count:   len(req.MessageIDs),
 		})
 	})
 
@@ -1403,6 +1741,426 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 		})
 	})
 
+	// Handler for batch inserting messages (from Baileys sync)
+	http.HandleFunc("/api/messages/batch", func(w http.ResponseWriter, r *http.Request) {
+		// Only allow POST requests
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Parse the request body
+		var req BatchInsertRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(BatchInsertResponse{
+				Success: false,
+				Message: fmt.Sprintf("Invalid request format: %v", err),
+			})
+			return
+		}
+
+		// Validate request
+		if len(req.Messages) == 0 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(BatchInsertResponse{
+				Success: false,
+				Message: "No messages provided",
+			})
+			return
+		}
+
+		if len(req.Messages) > 1000 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(BatchInsertResponse{
+				Success: false,
+				Message: fmt.Sprintf("Batch size too large: %d messages (max 1000)", len(req.Messages)),
+			})
+			return
+		}
+
+		// Insert messages using MessageStore
+		insertedCount := 0
+		duplicateCount := 0
+		failedCount := 0
+
+		for _, msg := range req.Messages {
+			// Convert Unix timestamp to time.Time
+			timestamp := time.Unix(msg.Timestamp, 0)
+
+			// Handle optional Content field
+			content := ""
+			if msg.Content != nil {
+				content = *msg.Content
+			}
+
+			// Store message using existing MessageStore method
+			err := messageStore.StoreMessage(
+				msg.ID,
+				msg.ChatJID,
+				msg.Sender,
+				content,
+				timestamp,
+				msg.FromMe,
+				"", // mediaType - not provided in Baileys sync
+				"", // filename
+				"", // url
+				nil, // mediaKey
+				nil, // fileSHA256
+				nil, // fileEncSHA256
+				0,   // fileLength
+			)
+
+			if err != nil {
+				// SQLite returns "UNIQUE constraint failed" for duplicates
+				// Since we use INSERT OR REPLACE, this counts as an update (duplicate)
+				if strings.Contains(err.Error(), "UNIQUE") {
+					duplicateCount++
+				} else {
+					failedCount++
+					fmt.Printf("Failed to store message %s: %v\n", msg.ID, err)
+				}
+			} else {
+				insertedCount++
+			}
+		}
+
+		// Set response headers
+		w.Header().Set("Content-Type", "application/json")
+
+		// Send response
+		json.NewEncoder(w).Encode(BatchInsertResponse{
+			Success:         failedCount == 0,
+			Message:         fmt.Sprintf("Processed %d messages: %d inserted, %d duplicates, %d failed", len(req.Messages), insertedCount, duplicateCount, failedCount),
+			InsertedCount:   insertedCount,
+			DuplicateCount:  duplicateCount,
+			FailedCount:     failedCount,
+		})
+	})
+
+	// Handler for getting chats with unread messages
+	http.HandleFunc("/api/chats/unread", func(w http.ResponseWriter, r *http.Request) {
+		// Only allow GET requests
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Parse query parameters
+		query := r.URL.Query()
+		limitStr := query.Get("limit")
+		limit := 20 // default limit
+		if limitStr != "" {
+			if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 {
+				limit = parsed
+			}
+		}
+
+		// Query chats with unread messages
+		sqlQuery := `
+			WITH unread_chats AS (
+				SELECT DISTINCT
+					m.chat_jid,
+					COUNT(CASE WHEN m.is_read = 0 THEN 1 END) as unread_count,
+					MAX(m.timestamp) as last_message_time,
+					MAX(CASE WHEN m.is_read = 0 THEN m.timestamp END) as last_unread_time
+				FROM messages m
+				WHERE m.is_from_me = 0
+				GROUP BY m.chat_jid
+				HAVING unread_count > 0
+			),
+			latest_messages AS (
+				SELECT
+					uc.chat_jid,
+					uc.unread_count,
+					uc.last_message_time,
+					uc.last_unread_time,
+					m.content as last_message,
+					m.sender as last_sender,
+					COALESCE(c.name, c.phone_number, uc.chat_jid) as chat_name,
+					CASE
+						WHEN uc.chat_jid LIKE '%g.us' THEN 'group'
+						WHEN uc.chat_jid LIKE '%newsletter' THEN 'newsletter'
+						ELSE 'individual'
+					END as chat_type,
+					-- Calculate priority score based on various factors
+					(
+						CASE
+							-- Group chats get higher priority
+							WHEN uc.chat_jid LIKE '%g.us' THEN 2.0
+							-- Individual chats
+							ELSE 1.0
+						END
+						-- More unread messages = higher priority (simple scaling)
+						+ MIN(uc.unread_count * 0.1, 2.0)
+						-- Recent messages get higher priority (decay over time)
+						+ (1.0 / (1.0 + (julianday('now') - julianday(uc.last_unread_time)) * 0.1))
+					) as priority_score
+				FROM unread_chats uc
+				JOIN messages m ON m.chat_jid = uc.chat_jid
+					AND m.timestamp = uc.last_message_time
+				LEFT JOIN contacts c ON c.jid = uc.chat_jid
+			)
+			SELECT
+				chat_jid,
+				chat_name,
+				chat_type,
+				unread_count,
+				last_message,
+				last_sender,
+				last_message_time,
+				last_unread_time,
+				priority_score
+			FROM latest_messages
+			ORDER BY priority_score DESC, last_unread_time DESC
+			LIMIT ?`
+
+		rows, err := messageStore.db.Query(sqlQuery, limit)
+		if err != nil {
+			fmt.Printf("ERROR in /api/chats/unread: %v\n", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"error":   err.Error(),
+			})
+			return
+		}
+		defer rows.Close()
+
+		type UnreadChat struct {
+			ChatJID         string    `json:"chat_jid"`
+			ChatName        string    `json:"chat_name"`
+			ChatType        string    `json:"chat_type"`
+			UnreadCount     int       `json:"unread_count"`
+			LastMessage     *string   `json:"last_message"`
+			LastSender      *string   `json:"last_sender"`
+			LastMessageTime time.Time `json:"last_message_time"`
+			LastUnreadTime  time.Time `json:"last_unread_time"`
+			PriorityScore   float64   `json:"priority_score"`
+		}
+
+		var chats []UnreadChat
+		for rows.Next() {
+			var chat UnreadChat
+			var lastMessage, lastSender sql.NullString
+			var lastMessageTimeStr, lastUnreadTimeStr string
+
+			if err := rows.Scan(
+				&chat.ChatJID,
+				&chat.ChatName,
+				&chat.ChatType,
+				&chat.UnreadCount,
+				&lastMessage,
+				&lastSender,
+				&lastMessageTimeStr,
+				&lastUnreadTimeStr,
+				&chat.PriorityScore,
+			); err != nil {
+				fmt.Printf("ERROR scanning row in /api/chats/unread: %v\n", err)
+				continue
+			}
+
+			// Parse timestamp strings
+			chat.LastMessageTime, _ = time.Parse("2006-01-02 15:04:05", lastMessageTimeStr)
+			chat.LastUnreadTime, _ = time.Parse("2006-01-02 15:04:05", lastUnreadTimeStr)
+
+			if lastMessage.Valid {
+				chat.LastMessage = &lastMessage.String
+			}
+			if lastSender.Valid {
+				chat.LastSender = &lastSender.String
+			}
+
+			chats = append(chats, chat)
+		}
+
+		// Set response headers
+		w.Header().Set("Content-Type", "application/json")
+
+		// Send response
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"chats":   chats,
+			"count":   len(chats),
+		})
+	})
+
+	// Handler for getting conversation view for a specific chat
+	http.HandleFunc("/api/chats/conversation", func(w http.ResponseWriter, r *http.Request) {
+		// Only allow GET requests
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Parse query parameters
+		query := r.URL.Query()
+		chatJID := query.Get("chat_jid")
+		if chatJID == "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"error":   "chat_jid parameter is required",
+			})
+			return
+		}
+
+		limitStr := query.Get("limit")
+		limit := 50 // default limit for conversation view
+		if limitStr != "" {
+			if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 {
+				limit = parsed
+			}
+		}
+
+		onlyUnread := query.Get("only_unread") == "true"
+
+		// Build SQL query
+		sqlQuery := `
+			SELECT
+				m.id as message_id,
+				m.chat_jid,
+				m.sender as sender_jid,
+				COALESCE(
+					-- Try to get the name from any contact with matching number
+					(SELECT name FROM contacts c2
+					 WHERE SUBSTR(m.sender, 1, INSTR(m.sender, '@') - 1) = SUBSTR(c2.jid, 1, INSTR(c2.jid, '@') - 1)
+					   AND c2.name != c2.phone_number
+					 LIMIT 1),
+					-- Otherwise use the direct match
+					c.name,
+					-- Fallback to sender
+					m.sender
+				) as sender_name,
+				m.content as message_text,
+				m.media_type,
+				m.media_path,
+				m.timestamp,
+				m.is_from_me,
+				m.is_read,
+				m.read_timestamp,
+				COALESCE(ch.name, ch.phone_number, m.chat_jid) as chat_name
+			FROM messages m
+			LEFT JOIN contacts c ON c.jid = m.sender
+			LEFT JOIN contacts ch ON ch.jid = m.chat_jid
+			WHERE m.chat_jid = ?`
+
+		if onlyUnread {
+			sqlQuery += " AND m.is_read = 0"
+		}
+
+		sqlQuery += `
+			ORDER BY m.timestamp DESC
+			LIMIT ?`
+
+		rows, err := messageStore.db.Query(sqlQuery, chatJID, limit)
+		if err != nil {
+			fmt.Printf("ERROR in /api/chats/conversation: %v\n", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"error":   err.Error(),
+			})
+			return
+		}
+		defer rows.Close()
+
+		type ConversationMessage struct {
+			MessageID     string     `json:"message_id"`
+			ChatJID       string     `json:"chat_jid"`
+			SenderJID     string     `json:"sender_jid"`
+			SenderName    string     `json:"sender_name"`
+			MessageText   *string    `json:"message_text"`
+			MediaType     *string    `json:"media_type"`
+			MediaPath     *string    `json:"media_path"`
+			Timestamp     time.Time  `json:"timestamp"`
+			IsFromMe      bool       `json:"is_from_me"`
+			IsRead        bool       `json:"is_read"`
+			ReadTimestamp *time.Time `json:"read_timestamp"`
+			ChatName      string     `json:"chat_name"`
+		}
+
+		var messages []ConversationMessage
+		for rows.Next() {
+			var msg ConversationMessage
+			var messageText, mediaType, mediaPath sql.NullString
+			var timestampStr string
+			var readTimestampStr sql.NullString
+
+			if err := rows.Scan(
+				&msg.MessageID,
+				&msg.ChatJID,
+				&msg.SenderJID,
+				&msg.SenderName,
+				&messageText,
+				&mediaType,
+				&mediaPath,
+				&timestampStr,
+				&msg.IsFromMe,
+				&msg.IsRead,
+				&readTimestampStr,
+				&msg.ChatName,
+			); err != nil {
+				fmt.Printf("ERROR scanning row in /api/chats/conversation: %v\n", err)
+				continue
+			}
+
+			// Parse timestamp strings
+			msg.Timestamp, _ = time.Parse("2006-01-02 15:04:05", timestampStr)
+			if readTimestampStr.Valid && readTimestampStr.String != "" {
+				if readTime, err := time.Parse("2006-01-02 15:04:05", readTimestampStr.String); err == nil {
+					msg.ReadTimestamp = &readTime
+				}
+			}
+
+			if messageText.Valid {
+				msg.MessageText = &messageText.String
+			}
+			if mediaType.Valid {
+				msg.MediaType = &mediaType.String
+			}
+			if mediaPath.Valid {
+				msg.MediaPath = &mediaPath.String
+			}
+
+			messages = append(messages, msg)
+		}
+
+		// Reverse the messages array to show oldest first (since we queried DESC)
+		for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+			messages[i], messages[j] = messages[j], messages[i]
+		}
+
+		// Get unread count for this chat
+		var unreadCount int
+		err = messageStore.db.QueryRow(`
+			SELECT COUNT(*)
+			FROM messages
+			WHERE chat_jid = ? AND is_read = 0 AND is_from_me = 0`,
+			chatJID).Scan(&unreadCount)
+		if err != nil {
+			unreadCount = 0
+		}
+
+		// Set response headers
+		w.Header().Set("Content-Type", "application/json")
+
+		// Send response
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":      true,
+			"chat_jid":     chatJID,
+			"messages":     messages,
+			"count":        len(messages),
+			"unread_count": unreadCount,
+		})
+	})
+
 	// Handler for getting message statistics
 	http.HandleFunc("/api/stats", func(w http.ResponseWriter, r *http.Request) {
 		// Only allow GET requests
@@ -1430,29 +2188,8 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 		json.NewEncoder(w).Encode(stats)
 	})
 
-	// Register community routes
-	RegisterCommunityRoutes(http.DefaultServeMux, client, messageStore)
-
-	// Register group routes
-	RegisterGroupRoutes(http.DefaultServeMux, client)
-
-	// Register messaging routes
-	RegisterMessagingRoutes(http.DefaultServeMux, client)
-
-	// Register chat routes
-	RegisterChatRoutes(http.DefaultServeMux, client)
-
-	// Register contact routes
-	RegisterContactRoutes(http.DefaultServeMux, client)
-
-	// Register privacy routes
-	RegisterPrivacyRoutes(http.DefaultServeMux, client)
-
-	// Register business routes
-	RegisterBusinessRoutes(http.DefaultServeMux, client)
-
-	// Register newsletter routes
-	RegisterNewsletterRoutes(http.DefaultServeMux, client)
+	// Note: All routes are registered above in the http.HandleFunc calls
+	// No need for separate route registration functions
 
 	// Start the server
 	serverAddr := fmt.Sprintf(":%d", port)
@@ -1583,6 +2320,23 @@ func main() {
 		case *events.Message:
 			// Process regular messages
 			handleMessage(client, messageStore, v, logger)
+
+		case *events.Receipt:
+			// Track read receipts from other clients
+			if v.Type == types.ReceiptTypeRead || v.Type == types.ReceiptTypeReadSelf {
+				// Update messages as read in database
+				for _, msgID := range v.MessageIDs {
+					_, err := messageStore.db.Exec(`
+						UPDATE messages
+						SET is_read = 1, read_timestamp = ?
+						WHERE id = ? AND chat_jid = ?`,
+						v.Timestamp, msgID, v.Chat.String())
+					if err != nil {
+						logger.Warnf("Failed to update read status for message %s: %v", msgID, err)
+					}
+				}
+				logger.Infof("Marked %d messages as read in chat %s", len(v.MessageIDs), v.Chat.String())
+			}
 
 		case *events.HistorySync:
 			// Process history sync events

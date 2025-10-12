@@ -1,0 +1,104 @@
+# TDD Guard Configuration for WhatsApp MCP Project
+# Enforces test-driven development practices across all three backends
+
+version: 1
+
+# Global settings
+settings:
+  require_tests_for_new_features: true
+  require_tests_for_bug_fixes: true
+  allow_skip_with_reason: false
+  fail_on_missing_tests: true
+
+# Backend configurations
+backends:
+  # Go Bridge (whatsmeow)
+  - name: whatsapp-bridge
+    language: go
+    test_dir: whatsapp-bridge
+    test_command: go test ./... -cover -coverprofile=coverage.out
+    test_pattern: "*_test.go"
+    coverage:
+      minimum: 70
+      check_enabled: true
+    rules:
+      - type: new_feature
+        require_tests: true
+        min_test_count: 1
+      - type: bug_fix
+        require_tests: true
+        require_regression_test: true
+
+  # Baileys Bridge (TypeScript)
+  - name: baileys-bridge
+    language: typescript
+    test_dir: baileys-bridge
+    test_command: npm test
+    test_pattern: "*.test.ts"
+    coverage:
+      minimum: 70
+      check_enabled: true
+      tool: jest
+    rules:
+      - type: new_feature
+        require_tests: true
+        min_test_count: 1
+      - type: bug_fix
+        require_tests: true
+        require_regression_test: true
+
+  # Python MCP Orchestrator
+  - name: unified-mcp
+    language: python
+    test_dir: unified-mcp
+    test_command: pytest --cov=. --cov-report=term --cov-fail-under=80
+    test_pattern: "test_*.py"
+    coverage:
+      minimum: 80
+      check_enabled: true
+      tool: pytest-cov
+    rules:
+      - type: new_feature
+        require_tests: true
+        min_test_count: 1
+      - type: bug_fix
+        require_tests: true
+        require_regression_test: true
+
+# File patterns to track
+tracked_patterns:
+  go:
+    - "**/*.go"
+    - "!**/*_test.go"
+  typescript:
+    - "**/*.ts"
+    - "!**/*.test.ts"
+    - "!**/*.spec.ts"
+  python:
+    - "**/*.py"
+    - "!**/test_*.py"
+    - "!**/*_test.py"
+
+# Exemptions (files that don't require tests)
+exemptions:
+  - "**/main.go"              # Entry points
+  - "**/main.py"              # Entry points
+  - "**/index.ts"             # Entry points
+  - "**/*_generated.go"       # Generated code
+  - "**/*_generated.py"       # Generated code
+  - "**/migrations/*.sql"     # Database migrations
+  - "**/*.d.ts"              # TypeScript declarations
+
+# Enforcement rules
+enforcement:
+  block_commit: true
+  block_push: true
+  show_coverage_report: true
+  suggest_test_file_names: true
+
+# Reporting
+reporting:
+  format: text
+  show_missing_tests: true
+  show_coverage_gaps: true
+  verbose: true

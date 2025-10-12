@@ -38,18 +38,22 @@ def send_file(recipient: str, file_path: str) -> Tuple[bool, str]:
 
 
 def mark_as_read(chat_jid: str, message_ids: List[str], sender: Optional[str] = None) -> Tuple[bool, str]:
-    """Mark messages as read via Go bridge."""
+    """Mark messages as read via Go bridge.
+
+    Phase 3: T011 - Fixed endpoint URL from /api/mark_as_read to /api/mark_read
+    """
     try:
         response = requests.post(
-            f"{GO_BRIDGE_URL}/api/mark_as_read",
+            f"{GO_BRIDGE_URL}/api/mark_read",  # Phase 3: T011 - Correct endpoint
             json={"chat_jid": chat_jid, "message_ids": message_ids, "sender": sender},
             timeout=30
         )
         response.raise_for_status()
         data = response.json()
-        return data.get("success", False), data.get("message", "")
+        # Phase 3: T012 - Return full response including count and error_code
+        return data.get("success", False), data.get("message", ""), data.get("count", 0), data.get("error_code", "")
     except Exception as e:
-        return False, f"Error marking as read: {e}"
+        return False, f"Error marking as read: {e}", 0, "CONNECTION_ERROR"
 
 
 def list_communities(query: Optional[str] = None, limit: int = 20) -> List[Dict[str, Any]]:

@@ -1,0 +1,190 @@
+# GitHub Actions CI Workflow Contract
+# Feature: Automated CI/CD Pipeline with Quality Gates
+# File: .github/workflows/ci.yml
+#
+# This is the CONTRACT/SPECIFICATION for the main CI workflow.
+# The actual implementation will be created in .github/workflows/ci.yml
+
+name: CI Pipeline
+
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main, develop]
+
+# Cancel in-progress runs for same PR (FR-016)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ====================
+  # Python Tests
+  # ====================
+  test-python:
+    name: test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    # Skip draft PRs (FR-019)
+    if: github.event.pull_request.draft == false || github.event_name == 'push'
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        working-directory: ./unified-mcp
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install pytest-rerunfailures  # FR-025: Auto-retry support
+
+      - name: Run tests with retry (FR-025, FR-027)
+        working-directory: ./unified-mcp
+        run: |
+          # Run tests with 3 retries on failure
+          # --reruns 3: Retry failed tests up to 3 times
+          # --reruns-delay 1: Wait 1 second between retries
+          # -v: Verbose output to see flaky test warnings
+          pytest tests/ \
+            --cov=src \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --reruns 3 \
+            --reruns-delay 1 \
+            -v
+
+      - name: Upload coverage to Codecov (FR-007, FR-028, FR-029)
+        uses: codecov/codecov-action@v4
+        continue-on-error: true  # FR-029: Fail-open if Codecov unavailable
+        timeout-minutes: 2
+        with:
+          files: ./unified-mcp/coverage.xml
+          flags: python-${{ matrix.python-version }}
+          name: python-${{ matrix.python-version }}
+          fail_ci_if_error: false  # FR-029: Don't block on Codecov failure
+
+      - name: Check coverage threshold (FR-008)
+        if: matrix.python-version == '3.12'  # Only check once
+        working-directory: ./unified-mcp
+        run: |
+          # Fail if overall coverage drops below 70%
+          pytest tests/ --cov=src --cov-fail-under=70 --cov-report=term
+
+  # ====================
+  # Code Quality Checks
+  # ====================
+  code-quality:
+    name: code-quality
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false || github.event_name == 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: 'pip'
+
+      - name: Install dependencies
+        working-directory: ./unified-mcp
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff mypy
+
+      - name: Run ruff format check (FR-003)
+        working-directory: ./unified-mcp
+        run: |
+          ruff format --check .
+
+      - name: Run ruff linting (FR-004)
+        working-directory: ./unified-mcp
+        run: |
+          ruff check .
+
+      - name: Run mypy type checking (FR-005)
+        working-directory: ./unified-mcp
+        run: |
+          mypy src/ --strict
+
+  # ====================
+  # Go Build & Tests
+  # ====================
+  build-go:
+    name: build-go
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false || github.event_name == 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache-dependency-path: whatsapp-bridge/go.sum
+
+      - name: Build Go project (FR-006)
+        working-directory: ./whatsapp-bridge
+        run: |
+          go build -v ./...
+
+      - name: Run Go tests
+        working-directory: ./whatsapp-bridge
+        run: |
+          go test -v ./...
+
+  # ====================
+  # TypeScript Build & Tests
+  # ====================
+  build-typescript:
+    name: build-typescript
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false || github.event_name == 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: baileys-bridge/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./baileys-bridge
+        run: |
+          npm ci
+
+      - name: Build TypeScript project (FR-006)
+        working-directory: ./baileys-bridge
+        run: |
+          npm run build
+
+      - name: Run TypeScript tests
+        working-directory: ./baileys-bridge
+        run: |
+          npm test
+
+# Expected execution time: < 8 minutes (NFR-002)
+# Expected triggers: PR open/update, push to main/develop (FR-001, FR-012)
+# Status updates: Within 30 seconds via GitHub API (FR-002)
+# Notification: PR author notified on completion (FR-020)

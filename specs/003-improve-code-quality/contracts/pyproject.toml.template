@@ -1,0 +1,110 @@
+# Configuration Contract: pyproject.toml - Mypy and Ruff Settings
+# Feature: Code Quality and Maintainability Improvements
+# Maps to: FR-012 to FR-025 (Type Checking and Linting)
+
+# =============================================================================
+# Mypy Configuration (Static Type Checking)
+# =============================================================================
+# Enforces: FR-012, FR-013, FR-014, FR-015
+# Success Criteria: SC-007, SC-008, SC-009
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+
+# Strict mode flags (explicitly listed for clarity)
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_any_generics = true
+check_untyped_defs = true
+no_implicit_reexport = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_unreachable = true
+strict_equality = true
+
+# Allow selective ignores for third-party libraries
+[[tool.mypy.overrides]]
+module = "fastmcp.*"
+ignore_missing_imports = true
+
+# =============================================================================
+# Ruff Configuration (Linting and Formatting)
+# =============================================================================
+# Enforces: FR-016 to FR-025
+# Success Criteria: SC-010, SC-011, SC-012, SC-013, SC-014, SC-015
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["."]
+
+[tool.ruff.lint]
+# Rule selection matches research.md decisions
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort (import sorting)
+    "N",   # pep8-naming
+    "W",   # pycodestyle warnings
+    "UP",  # pyupgrade (modern Python syntax)
+    "C90", # mccabe complexity (FR-020)
+    "D",   # pydocstyle (docstring rules, FR-021 to FR-025)
+    "RUF", # ruff-specific rules
+]
+
+# Ignore conflicting rules (see research.md)
+ignore = [
+    "D203", # one-blank-line-before-class (conflicts with D211)
+    "D213", # multi-line-summary-second-line (conflicts with D212)
+]
+
+[tool.ruff.lint.mccabe]
+# Enforces: FR-020 (Complexity limit of 10)
+# Success Criteria: SC-012
+max-complexity = 10
+
+[tool.ruff.lint.pydocstyle]
+# Enforces: FR-021 to FR-025 (Google-style docstrings)
+# Success Criteria: SC-013, SC-014, SC-015
+convention = "google"
+
+[tool.ruff.lint.isort]
+# Package-aware import sorting (FR-003)
+known-first-party = ["unified_mcp"]
+
+# =============================================================================
+# Pytest Configuration (For doctest execution)
+# =============================================================================
+# Enforces: FR-025 (Executable examples in docstrings)
+
+[tool.pytest.ini_options]
+addopts = [
+    "--doctest-modules",  # Enable doctest execution
+    "--doctest-continue-on-failure",  # Don't stop on first doctest failure
+]
+
+# =============================================================================
+# Usage Instructions
+# =============================================================================
+# 1. Copy this template to unified-mcp/pyproject.toml (merge with existing content)
+# 2. Run: mypy src/ --strict
+#    - Expected: Zero errors (may need to add type hints first)
+# 3. Run: ruff check .
+#    - Expected: Zero warnings after fixes applied
+# 4. Run: pytest --doctest-modules src/
+#    - Expected: All docstring examples pass
+
+# =============================================================================
+# Validation Criteria (From contracts/)
+# =============================================================================
+# ✅ SC-007: mypy --strict exits with code 0
+# ✅ SC-008: All public functions have type annotations
+# ✅ SC-009: Type annotation coverage >95%
+# ✅ SC-010: ruff check exits with code 0
+# ✅ SC-011: All import statements sorted correctly
+# ✅ SC-012: No functions with complexity >10
+# ✅ SC-013: All public functions have docstrings
+# ✅ SC-014: All docstrings follow Google style
+# ✅ SC-015: All docstring examples are executable
