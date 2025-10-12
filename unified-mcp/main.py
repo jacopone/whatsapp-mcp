@@ -6,29 +6,8 @@ Combines Go/whatsmeow and Baileys bridges for maximum functionality:
 - Baileys: History sync
 - Hybrid: Smart combination of both
 """
-import sys
-sys.path.insert(0, '../whatsapp-mcp-server')
-
 from typing import List, Dict, Any, Optional, Tuple
 from mcp.server.fastmcp import FastMCP
-from whatsapp import (
-    search_contacts as whatsapp_search_contacts,
-    list_messages as whatsapp_list_messages,
-    list_chats as whatsapp_list_chats,
-    get_chat as whatsapp_get_chat,
-    get_direct_chat_by_contact as whatsapp_get_direct_chat_by_contact,
-    get_contact_chats as whatsapp_get_contact_chats,
-    get_last_interaction as whatsapp_get_last_interaction,
-    get_message_context as whatsapp_get_message_context,
-    send_message as whatsapp_send_message,
-    send_file as whatsapp_send_file,
-    send_audio_message as whatsapp_audio_voice_message,
-    download_media as whatsapp_download_media,
-    mark_as_read as whatsapp_mark_as_read,
-    list_communities as whatsapp_list_communities,
-    get_community_groups as whatsapp_get_community_groups,
-    mark_community_as_read as whatsapp_mark_community_as_read
-)
 from backends import go_client, baileys_client
 from sync import sync_baileys_to_go, sync_all_chats
 import backends.go_client as go
