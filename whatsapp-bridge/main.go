@@ -1880,7 +1880,12 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 					uc.last_unread_time,
 					m.content as last_message,
 					m.sender as last_sender,
-					COALESCE(c.name, c.phone_number, uc.chat_jid) as chat_name,
+					COALESCE(
+						ch.name,  -- First try to get name from chats table
+						c.name,   -- Then try contacts table
+						c.phone_number,
+						uc.chat_jid  -- Finally fallback to JID
+					) as chat_name,
 					CASE
 						WHEN uc.chat_jid LIKE '%g.us' THEN 'group'
 						WHEN uc.chat_jid LIKE '%newsletter' THEN 'newsletter'
@@ -1902,6 +1907,7 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 				FROM unread_chats uc
 				JOIN messages m ON m.chat_jid = uc.chat_jid
 					AND m.timestamp = uc.last_message_time
+				LEFT JOIN chats ch ON ch.jid = uc.chat_jid  -- Join with chats table
 				LEFT JOIN contacts c ON c.jid = uc.chat_jid
 			)
 			SELECT
@@ -2039,15 +2045,21 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 				) as sender_name,
 				m.content as message_text,
 				m.media_type,
-				m.media_path,
+				m.filename as media_path,
 				m.timestamp,
 				m.is_from_me,
 				m.is_read,
 				m.read_timestamp,
-				COALESCE(ch.name, ch.phone_number, m.chat_jid) as chat_name
+				COALESCE(
+					chats.name,  -- First try to get name from chats table
+					ch.name,     -- Then try contacts table
+					ch.phone_number,
+					m.chat_jid   -- Finally fallback to JID
+				) as chat_name
 			FROM messages m
 			LEFT JOIN contacts c ON c.jid = m.sender
 			LEFT JOIN contacts ch ON ch.jid = m.chat_jid
+			LEFT JOIN chats ON chats.jid = m.chat_jid  -- Join with chats table
 			WHERE m.chat_jid = ?`
 
 		if onlyUnread {

@@ -13,11 +13,13 @@ from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
 import requests
 
-logger = logging.getLogger(__name__)
+from constants import (
+    BAILEYS_BRIDGE_URL,
+    GO_BRIDGE_URL,
+    DEFAULT_TIMEOUT
+)
 
-# Backend URLs
-BAILEYS_URL = "http://localhost:8081"
-GO_URL = "http://localhost:8080"
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -45,10 +47,10 @@ class DatabaseSyncService:
 
     def __init__(
         self,
-        baileys_url: str = BAILEYS_URL,
-        go_url: str = GO_URL,
+        baileys_url: str = BAILEYS_BRIDGE_URL,
+        go_url: str = GO_BRIDGE_URL,
         batch_size: int = 1000,
-        request_timeout: int = 30
+        request_timeout: int = DEFAULT_TIMEOUT
     ):
         """
         Initialize sync service
@@ -384,8 +386,8 @@ def sync_all_chats() -> Dict[str, SyncResult]:
     try:
         # Get list of chats from Baileys temp DB
         response = requests.get(
-            f"{BAILEYS_URL}/chats/list",
-            timeout=30
+            f"{BAILEYS_BRIDGE_URL}/chats/list",
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
 

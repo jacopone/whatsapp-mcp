@@ -1,20 +1,109 @@
-22:01:12.364[36m [Client INFO] Starting WhatsApp client...[0m
-22:01:12.957[36m [Client INFO] Successfully authenticated[0m
-22:01:13.368[36m [Client INFO] Connected to WhatsApp[0m
-22:01:13.422[36m [Client INFO] Using existing chat name for 120363040187584632@g.us: TL - Amministrazione[0m
-[2025-10-12 21:55:16] ← 181772092440675@lid: Autogestione
-22:01:13.434[36m [Client INFO] Using existing chat name for 120363040187584632@g.us: TL - Amministrazione[0m
-[2025-10-12 21:56:31] ← 126134616338497@lid: Questo nn era ancora successo 😂
-22:01:13.448[36m [Client INFO] Using existing chat name for 120363040187584632@g.us: TL - Amministrazione[0m
-[2025-10-12 21:56:50] ← 126134616338497@lid: Son molto carini cmq ma spieghiamoglielo per bene
-22:01:13.462[36m [Client INFO] Marked 2 messages as read in chat 120363045187326551@g.us[0m
-22:01:13.469[36m [Client INFO] Using existing chat name for 120363040187584632@g.us: TL - Amministrazione[0m
-[2025-10-12 21:57:34] ← 181772092440675@lid: Si spieghiamo che pagano la notte in più
-22:01:13.586[36m [Client INFO] Using existing chat name for 120363040187584632@g.us: TL - Amministrazione[0m
-[2025-10-12 21:59:04] ← 181772092440675@lid: Cmq vrbo quest' anno c ha mandato i peggio rincoglioniti
+22:24:13.507[36m [Client INFO] Starting WhatsApp client...[0m
+22:24:14.097[36m [Client INFO] Successfully authenticated[0m
+22:24:14.397[36m [Client INFO] Connected to WhatsApp[0m
 
 ✓ Connected to WhatsApp! Type 'help' for commands.
-22:01:14.800[36m [Client INFO] Populating contacts from WhatsApp...[0m
+22:24:15.979[36m [Client INFO] Populating contacts from WhatsApp...[0m
 Populated 2736 contacts into the database
 Starting REST API server on :8080...
 REST server is running. Press Ctrl+C to disconnect and exit.
+22:35:25.367[36m [Client INFO] Using existing chat name for status@broadcast: 393345453763[0m
+22:35:25.381[36m [Client INFO] Using existing chat name for status@broadcast: 393345453763[0m
+[2025-10-12 22:35:24] ← 393394366035@s.whatsapp.net: [image: image_20251012_223525.jpg] 
+22:35:32.112[36m [Client INFO] Using existing chat name for status@broadcast: 393345453763[0m
+[2025-10-12 22:35:31] ← 393394366035@s.whatsapp.net: [image: image_20251012_223532.jpg] 
+22:35:38.877[36m [Client INFO] Using existing chat name for status@broadcast: 393345453763[0m
+[2025-10-12 22:35:38] ← 393394366035@s.whatsapp.net: [image: image_20251012_223538.jpg] 
+22:35:41.591[36m [Client INFO] Using existing chat name for status@broadcast: 393345453763[0m
+[2025-10-12 22:35:41] ← 393394366035@s.whatsapp.net: [image: image_20251012_223541.jpg] 
+22:35:45.117[36m [Client INFO] Using existing chat name for status@broadcast: 393345453763[0m
+[2025-10-12 22:35:44] ← 393394366035@s.whatsapp.net: [image: image_20251012_223545.jpg] 
+22:35:51.554[36m [Client INFO] Using existing chat name for status@broadcast: 393345453763[0m
+[2025-10-12 22:35:51] ← 393394366035@s.whatsapp.net: [image: image_20251012_223551.jpg] 
+22:35:59.313[36m [Client INFO] Using existing chat name for status@broadcast: 393345453763[0m
+[2025-10-12 22:35:58] ← 393394366035@s.whatsapp.net: [image: image_20251012_223559.jpg] 
+22:36:03.117[36m [Client INFO] Using existing chat name for status@broadcast: 393345453763[0m
+[2025-10-12 22:36:02] ← 393394366035@s.whatsapp.net: [image: image_20251012_223603.jpg] 
+22:37:48.376[36m [Client INFO] Using existing chat name for status@broadcast: 393345453763[0m
+[2025-10-12 22:37:47] ← 393345453763@s.whatsapp.net: [video: video_20251012_223748.mp4] 
+22:40:08.219[36m [Client INFO] Marked 1 messages as read in chat 393351044410-1382013326@g.us[0m
+22:40:14.324[36m [Client INFO] Using existing chat name for 393351044410-1382013326@g.us: Slanciamoci STAFF[0m
+22:40:14.333[36m [Client INFO] Using existing chat name for 393351044410-1382013326@g.us: Slanciamoci STAFF[0m
+[2025-10-12 22:40:13] → 213679102545948@lid: 😍😍
+22:40:31.744[36m [Client INFO] Marked 1 messages as read in chat 393351044410-1382013326@g.us[0m
+22:40:50.004[36m [Client INFO] Marked 1 messages as read in chat 393351044410-1382013326@g.us[0m
+22:40:50.007[36m [Client INFO] Marked 1 messages as read in chat 393351044410-1382013326@g.us[0m
+22:45:17.651[36m [Client INFO] Marked 1 messages as read in chat 393351044410-1382013326@g.us[0m
+22:47:56.288[36m [Client INFO] Marked 1 messages as read in chat 393351044410-1382013326@g.us[0m
+22:47:56.430[36m [Client INFO] Using existing chat name for status@broadcast: 393345453763[0m
+22:47:56.440[36m [Client INFO] Using existing chat name for status@broadcast: 393345453763[0m
+[2025-10-12 22:47:55] ← 393391402385@s.whatsapp.net: [image: image_20251012_224756.jpg] 
+22:49:07.522[36m [Client INFO] Marked 1 messages as read in chat 393351044410-1382013326@g.us[0m
+22:49:07.525[36m [Client INFO] Marked 1 messages as read in chat 393351044410-1382013326@g.us[0m
+22:51:21.606[36m [Client INFO] Marked 1 messages as read in chat 393351044410-1382013326@g.us[0m
+22:52:02.668[36m [Client INFO] Marked 1 messages as read in chat 393351044410-1382013326@g.us[0m
+22:55:39.760[36m [Client INFO] Marked 1 messages as read in chat 393351044410-1382013326@g.us[0m
+22:57:51.743[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:57:51.764[36m [Client INFO] Marked 4 messages as read in chat 120363038734009931@g.us[0m
+22:57:51.772[36m [Client INFO] Marked 2 messages as read in chat 120363038734009931@g.us[0m
+22:57:51.776[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:57:51.782[36m [Client INFO] Marked 2 messages as read in chat 120363038734009931@g.us[0m
+22:57:51.788[36m [Client INFO] Marked 2 messages as read in chat 120363038734009931@g.us[0m
+22:57:51.795[36m [Client INFO] Marked 2 messages as read in chat 120363038734009931@g.us[0m
+22:57:51.803[36m [Client INFO] Marked 3 messages as read in chat 120363038734009931@g.us[0m
+22:57:51.811[36m [Client INFO] Marked 3 messages as read in chat 120363038734009931@g.us[0m
+22:57:51.814[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:57:51.846[36m [Client INFO] Marked 2 messages as read in chat 120363038734009931@g.us[0m
+22:57:51.848[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:57:51.852[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:57:51.858[36m [Client INFO] Marked 2 messages as read in chat 120363038734009931@g.us[0m
+22:57:51.868[36m [Client INFO] Marked 3 messages as read in chat 120363038734009931@g.us[0m
+22:57:51.873[36m [Client INFO] Marked 2 messages as read in chat 120363038734009931@g.us[0m
+22:57:51.877[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:57:51.883[36m [Client INFO] Marked 2 messages as read in chat 120363038734009931@g.us[0m
+22:57:51.896[36m [Client INFO] Marked 4 messages as read in chat 120363038734009931@g.us[0m
+22:57:51.899[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:57:51.902[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:57:51.905[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:57:51.910[36m [Client INFO] Marked 2 messages as read in chat 120363038734009931@g.us[0m
+22:57:51.914[36m [Client INFO] Marked 2 messages as read in chat 120363038734009931@g.us[0m
+22:57:51.917[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:57:51.919[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:57:51.922[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:57:51.924[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:57:51.935[36m [Client INFO] Marked 3 messages as read in chat 120363038734009931@g.us[0m
+22:57:51.939[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.051[36m [Client INFO] Marked 39 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.055[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.063[36m [Client INFO] Marked 3 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.069[36m [Client INFO] Marked 2 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.074[36m [Client INFO] Marked 2 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.078[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.081[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.091[36m [Client INFO] Marked 3 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.094[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.097[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.099[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.111[36m [Client INFO] Marked 4 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.114[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.120[36m [Client INFO] Marked 2 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.122[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.126[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.129[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.131[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.137[36m [Client INFO] Marked 2 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.148[36m [Client INFO] Marked 4 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.153[36m [Client INFO] Marked 2 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.159[36m [Client INFO] Marked 2 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.162[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.168[36m [Client INFO] Marked 2 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.177[36m [Client INFO] Marked 3 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.180[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.187[36m [Client INFO] Marked 2 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.189[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.192[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:57:52.194[36m [Client INFO] Marked 1 messages as read in chat 120363038734009931@g.us[0m
+22:58:13.126[36m [Client INFO] Marked 1 messages as read in chat status@broadcast[0m
+22:58:26.054[36m [Client INFO] Marked 1 messages as read in chat 393351044410-1382013326@g.us[0m
+23:01:36.204[36m [Client INFO] Marked 1 messages as read in chat 393351044410-1382013326@g.us[0m
+23:03:07.144[36m [Client INFO] Marked 1 messages as read in chat 393351044410-1382013326@g.us[0m

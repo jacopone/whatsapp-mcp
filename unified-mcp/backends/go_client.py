@@ -4,7 +4,13 @@ HTTP client for Go/whatsmeow bridge.
 import requests
 from typing import List, Dict, Any, Optional, Tuple
 
-GO_BRIDGE_URL = "http://localhost:8080"
+from constants import (
+    GO_BRIDGE_URL,
+    DEFAULT_TIMEOUT,
+    MEDIA_TIMEOUT,
+    SHORT_TIMEOUT,
+    HEALTH_CHECK_TIMEOUT
+)
 
 
 def send_message(recipient: str, message: str) -> Tuple[bool, str]:
@@ -13,7 +19,7 @@ def send_message(recipient: str, message: str) -> Tuple[bool, str]:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/send_message",
             json={"recipient": recipient, "message": message},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -28,7 +34,7 @@ def send_file(recipient: str, file_path: str) -> Tuple[bool, str]:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/send_file",
             json={"recipient": recipient, "file_path": file_path},
-            timeout=60
+            timeout=MEDIA_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -46,7 +52,7 @@ def mark_as_read(chat_jid: str, message_ids: List[str], sender: Optional[str] = 
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/mark_read",  # Phase 3: T011 - Correct endpoint
             json={"chat_jid": chat_jid, "message_ids": message_ids, "sender": sender},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -66,7 +72,7 @@ def list_communities(query: Optional[str] = None, limit: int = 20) -> List[Dict[
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/communities",
             params=params,
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -82,7 +88,7 @@ def get_community_groups(community_jid: str, limit: int = 100) -> List[Dict[str,
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/community/{community_jid}/groups",
             params={"limit": limit},
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -98,7 +104,7 @@ def download_media(message_id: str, chat_jid: str) -> Optional[str]:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/download_media",
             json={"message_id": message_id, "chat_jid": chat_jid},
-            timeout=60
+            timeout=MEDIA_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -113,7 +119,7 @@ def download_media(message_id: str, chat_jid: str) -> Optional[str]:
 def health_check() -> bool:
     """Check if Go bridge is healthy."""
     try:
-        response = requests.get(f"{GO_BRIDGE_URL}/health", timeout=5)
+        response = requests.get(f"{GO_BRIDGE_URL}/health", timeout=HEALTH_CHECK_TIMEOUT)
         return response.status_code == 200
     except Exception:
         return False
@@ -154,7 +160,7 @@ def query_messages(
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/messages",
             params=params,
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -173,7 +179,7 @@ def get_message_stats() -> Dict[str, Any]:
     try:
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/stats",
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -197,7 +203,7 @@ def send_text_message(chat_jid: str, text: str) -> Tuple[bool, str]:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/messages/send-text",
             json={"chat_jid": chat_jid, "text": text},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -220,7 +226,7 @@ def send_media_message(chat_jid: str, media_path: str, media_type: str, caption:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/messages/send-media",
             json=payload,
-            timeout=60
+            timeout=MEDIA_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -235,7 +241,7 @@ def send_voice_note(chat_jid: str, audio_path: str) -> Tuple[bool, str]:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/messages/send-voice",
             json={"chat_jid": chat_jid, "audio_path": audio_path},
-            timeout=60
+            timeout=MEDIA_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -250,7 +256,7 @@ def send_sticker(chat_jid: str, sticker_path: str) -> Tuple[bool, str]:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/messages/send-sticker",
             json={"chat_jid": chat_jid, "sticker_path": sticker_path},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -265,7 +271,7 @@ def send_contact(chat_jid: str, vcard: str) -> Tuple[bool, str]:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/messages/send-contact",
             json={"chat_jid": chat_jid, "vcard": vcard},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -280,7 +286,7 @@ def send_location(chat_jid: str, latitude: float, longitude: float) -> Tuple[boo
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/messages/send-location",
             json={"chat_jid": chat_jid, "latitude": latitude, "longitude": longitude},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -295,7 +301,7 @@ def react_to_message(chat_jid: str, message_id: str, emoji: str) -> Tuple[bool, 
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/messages/{message_id}/react",
             json={"chat_jid": chat_jid, "emoji": emoji},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -310,7 +316,7 @@ def edit_message(message_id: str, new_text: str) -> Tuple[bool, str]:
         response = requests.put(
             f"{GO_BRIDGE_URL}/api/messages/{message_id}/edit",
             json={"new_text": new_text},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -324,7 +330,7 @@ def delete_message(message_id: str) -> Tuple[bool, str]:
     try:
         response = requests.delete(
             f"{GO_BRIDGE_URL}/api/messages/{message_id}/revoke",
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -339,7 +345,7 @@ def forward_message(message_id: str, to_chat_jid: str) -> Tuple[bool, str]:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/messages/{message_id}/forward",
             json={"to_chat_jid": to_chat_jid},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -355,7 +361,7 @@ def list_chats(limit: int = 20, archived: bool = False) -> List[Dict[str, Any]]:
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/chats/list",
             params=params,
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -370,7 +376,7 @@ def get_chat_metadata(chat_jid: str) -> Dict[str, Any]:
     try:
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/chats/{chat_jid}",
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -388,7 +394,7 @@ def archive_chat(chat_jid: str) -> Tuple[bool, str]:
     try:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/chats/{chat_jid}/archive",
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -402,7 +408,7 @@ def unarchive_chat(chat_jid: str) -> Tuple[bool, str]:
     try:
         response = requests.delete(
             f"{GO_BRIDGE_URL}/api/chats/{chat_jid}/archive",
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -416,7 +422,7 @@ def pin_chat(chat_jid: str) -> Tuple[bool, str]:
     try:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/chats/{chat_jid}/pin",
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -430,7 +436,7 @@ def unpin_chat(chat_jid: str) -> Tuple[bool, str]:
     try:
         response = requests.delete(
             f"{GO_BRIDGE_URL}/api/chats/{chat_jid}/pin",
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -445,7 +451,7 @@ def mute_chat(chat_jid: str, duration_seconds: int) -> Tuple[bool, str]:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/chats/{chat_jid}/mute",
             json={"duration_seconds": duration_seconds},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -459,7 +465,7 @@ def unmute_chat(chat_jid: str) -> Tuple[bool, str]:
     try:
         response = requests.delete(
             f"{GO_BRIDGE_URL}/api/chats/{chat_jid}/mute",
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -478,7 +484,7 @@ def search_contacts_v2(query: str) -> List[Dict[str, Any]]:
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/contacts/search",
             params={"query": query},
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -494,7 +500,7 @@ def get_contact_details(jid: str) -> Dict[str, Any]:
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/contacts/details",
             params={"jid": jid},
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -509,7 +515,7 @@ def check_is_on_whatsapp(phone: str) -> Dict[str, Any]:
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/contacts/is-on-whatsapp",
             params={"phone": phone},
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -524,7 +530,7 @@ def get_profile_picture(jid: str) -> Dict[str, Any]:
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/contacts/profile-picture",
             params={"jid": jid},
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -539,7 +545,7 @@ def update_profile_picture(image_path: str) -> Tuple[bool, str]:
         response = requests.put(
             f"{GO_BRIDGE_URL}/api/profile/picture",
             json={"image_path": image_path},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -554,7 +560,7 @@ def get_contact_status(jid: str) -> Dict[str, Any]:
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/contacts/status",
             params={"jid": jid},
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -569,7 +575,7 @@ def update_profile_status(status_text: str) -> Tuple[bool, str]:
         response = requests.put(
             f"{GO_BRIDGE_URL}/api/profile/status",
             json={"status_text": status_text},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -583,7 +589,7 @@ def get_linked_devices() -> Dict[str, Any]:
     try:
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/contacts/linked-devices",
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -608,7 +614,7 @@ def block_contact(jid: Optional[str] = None, phone: Optional[str] = None) -> Tup
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/privacy/block",
             json=payload,
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -629,7 +635,7 @@ def unblock_contact(jid: Optional[str] = None, phone: Optional[str] = None) -> T
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/privacy/unblock",
             json=payload,
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -643,7 +649,7 @@ def get_blocked_contacts() -> Dict[str, Any]:
     try:
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/privacy/blocked",
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -657,7 +663,7 @@ def get_privacy_settings() -> Dict[str, Any]:
     try:
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/privacy/settings",
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -676,7 +682,7 @@ def update_last_seen_privacy(value: str) -> Tuple[bool, str]:
         response = requests.put(
             f"{GO_BRIDGE_URL}/api/privacy/last-seen",
             json={"value": value},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -695,7 +701,7 @@ def update_profile_picture_privacy(value: str) -> Tuple[bool, str]:
         response = requests.put(
             f"{GO_BRIDGE_URL}/api/privacy/profile-picture",
             json={"value": value},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -714,7 +720,7 @@ def update_status_privacy(value: str) -> Tuple[bool, str]:
         response = requests.put(
             f"{GO_BRIDGE_URL}/api/privacy/status",
             json={"value": value},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -733,7 +739,7 @@ def update_online_privacy(value: str) -> Tuple[bool, str]:
         response = requests.put(
             f"{GO_BRIDGE_URL}/api/privacy/online",
             json={"value": value},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -758,7 +764,7 @@ def get_business_profile(jid: str) -> Dict[str, Any]:
     try:
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/business/{jid}/profile",
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -783,7 +789,7 @@ def subscribe_to_newsletter(jid: str) -> Tuple[bool, str]:
     try:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/newsletters/{jid}/subscribe",
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -804,7 +810,7 @@ def unsubscribe_from_newsletter(jid: str) -> Tuple[bool, str]:
     try:
         response = requests.delete(
             f"{GO_BRIDGE_URL}/api/newsletters/{jid}/subscribe",
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -831,7 +837,7 @@ def create_newsletter(name: str, description: str = "") -> Dict[str, Any]:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/newsletters/create",
             json=payload,
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -852,7 +858,7 @@ def get_newsletter_metadata(jid: str) -> Dict[str, Any]:
     try:
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/newsletters/{jid}",
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -876,7 +882,7 @@ def react_to_newsletter_message(jid: str, message_id: str, emoji: str) -> Tuple[
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/newsletters/{jid}/messages/{message_id}/react",
             json={"emoji": emoji},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()

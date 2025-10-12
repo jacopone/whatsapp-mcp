@@ -5,13 +5,17 @@ import requests
 from typing import Dict, List, Any
 import time
 
-BAILEYS_BRIDGE_URL = "http://localhost:8081"
+from constants import (
+    BAILEYS_BRIDGE_URL,
+    HEALTH_CHECK_TIMEOUT,
+    SHORT_TIMEOUT
+)
 
 
 def get_sync_status() -> Dict[str, Any]:
     """Get current history sync status."""
     try:
-        response = requests.get(f"{BAILEYS_BRIDGE_URL}/api/sync/status", timeout=5)
+        response = requests.get(f"{BAILEYS_BRIDGE_URL}/api/sync/status", timeout=HEALTH_CHECK_TIMEOUT)
         response.raise_for_status()
         return response.json()
     except Exception as e:
@@ -64,7 +68,7 @@ def wait_for_sync_completion(timeout: int = 300, poll_interval: int = 5) -> bool
 def get_messages() -> List[Dict[str, Any]]:
     """Fetch all synced messages from Baileys."""
     try:
-        response = requests.get(f"{BAILEYS_BRIDGE_URL}/api/messages", timeout=10)
+        response = requests.get(f"{BAILEYS_BRIDGE_URL}/api/messages", timeout=SHORT_TIMEOUT)
         response.raise_for_status()
         data = response.json()
         return data.get("messages", [])
@@ -76,7 +80,7 @@ def get_messages() -> List[Dict[str, Any]]:
 def clear_temp_data() -> bool:
     """Clear Baileys temporary data after successful sync."""
     try:
-        response = requests.post(f"{BAILEYS_BRIDGE_URL}/api/clear", timeout=5)
+        response = requests.post(f"{BAILEYS_BRIDGE_URL}/api/clear", timeout=HEALTH_CHECK_TIMEOUT)
         response.raise_for_status()
         data = response.json()
         return data.get("success", False)
@@ -88,7 +92,7 @@ def clear_temp_data() -> bool:
 def health_check() -> bool:
     """Check if Baileys bridge is healthy."""
     try:
-        response = requests.get(f"{BAILEYS_BRIDGE_URL}/health", timeout=5)
+        response = requests.get(f"{BAILEYS_BRIDGE_URL}/health", timeout=HEALTH_CHECK_TIMEOUT)
         return response.status_code == 200
     except Exception:
         return False
@@ -110,7 +114,7 @@ def get_business_catalog(jid: str) -> Dict[str, Any]:
     try:
         response = requests.get(
             f"{BAILEYS_BRIDGE_URL}/api/business/{jid}/catalog",
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -132,7 +136,7 @@ def get_product_details(jid: str, product_id: str) -> Dict[str, Any]:
     try:
         response = requests.get(
             f"{BAILEYS_BRIDGE_URL}/api/business/{jid}/catalog/{product_id}",
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()

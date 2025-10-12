@@ -10,6 +10,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from mcp.server.fastmcp import FastMCP
 from backends import go_client, baileys_client
 from sync import sync_baileys_to_go, sync_all_chats
+from constants import SHORT_TIMEOUT, HEALTH_CHECK_TIMEOUT
 import backends.go_client as go
 
 # Initialize FastMCP server
@@ -391,7 +392,7 @@ def fetch_history(
                 "resume": resume,
                 "max_messages": max_messages
             },
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -416,7 +417,7 @@ def get_sync_status(chat_jid: str) -> Dict[str, Any]:
         import requests
         response = requests.get(
             f"{baileys_client.BAILEYS_BRIDGE_URL}/history/sync/{chat_jid}/status",
-            timeout=5
+            timeout=HEALTH_CHECK_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -440,7 +441,7 @@ def cancel_sync(chat_jid: str) -> Dict[str, Any]:
         import requests
         response = requests.post(
             f"{baileys_client.BAILEYS_BRIDGE_URL}/history/sync/{chat_jid}/cancel",
-            timeout=5
+            timeout=HEALTH_CHECK_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -467,7 +468,7 @@ def resume_sync(chat_jid: str, max_messages: int = 1000) -> Dict[str, Any]:
         response = requests.post(
             f"{baileys_client.BAILEYS_BRIDGE_URL}/history/sync/{chat_jid}/resume",
             json={"max_messages": max_messages},
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -1379,8 +1380,8 @@ def react_to_newsletter_post(jid: str, message_id: str, emoji: str) -> Dict[str,
 
 if __name__ == "__main__":
     print("🚀 Starting Unified WhatsApp MCP Server...")
-    print("   - Go Bridge: http://localhost:8080")
-    print("   - Baileys Bridge: http://localhost:8081")
+    print(f"   - Go Bridge: {go_client.GO_BRIDGE_URL}")
+    print(f"   - Baileys Bridge: {baileys_client.BAILEYS_BRIDGE_URL}")
     print("   - Unified MCP: stdio transport")
     print("\n💡 Key Features:")
     print("   ✅ All Go/whatsmeow features (communities, mark as read, media)")

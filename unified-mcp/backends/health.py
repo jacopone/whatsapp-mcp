@@ -11,9 +11,11 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import logging
 
-# Backend URLs
-GO_BRIDGE_URL = "http://localhost:8080"
-BAILEYS_BRIDGE_URL = "http://localhost:8081"
+from constants import (
+    GO_BRIDGE_URL,
+    BAILEYS_BRIDGE_URL,
+    HEALTH_CHECK_TIMEOUT
+)
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -62,7 +64,7 @@ class HealthMonitor:
         self.go_failure_count = 0
         self.baileys_failure_count = 0
 
-    def check_go_health(self, timeout: int = 5) -> BackendHealth:
+    def check_go_health(self, timeout: int = HEALTH_CHECK_TIMEOUT) -> BackendHealth:
         """
         Check health of Go/whatsmeow bridge
 
@@ -157,7 +159,7 @@ class HealthMonitor:
                 error_message=str(e)
             )
 
-    def check_baileys_health(self, timeout: int = 5) -> BackendHealth:
+    def check_baileys_health(self, timeout: int = HEALTH_CHECK_TIMEOUT) -> BackendHealth:
         """
         Check health of Baileys bridge
 
