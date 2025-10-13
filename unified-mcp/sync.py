@@ -1,5 +1,4 @@
-"""
-Database Sync Service
+"""Database Sync Service.
 
 Orchestrates message synchronization between Baileys temp database and Go main database.
 Implements deduplication, batch processing, and checkpoint management.
@@ -9,33 +8,29 @@ Target: 100+ messages/second for efficient history sync
 
 import logging
 import time
-from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
+from typing import Any
+
 import requests
 
-from constants import (
-    BAILEYS_BRIDGE_URL,
-    GO_BRIDGE_URL,
-    DEFAULT_TIMEOUT
-)
+from constants import BAILEYS_BRIDGE_URL, DEFAULT_TIMEOUT, GO_BRIDGE_URL
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class SyncResult:
-    """Result of a sync operation"""
+    """Result of a sync operation."""
     success: bool
     messages_synced: int
     messages_deduplicated: int
     elapsed_seconds: float
-    error_message: Optional[str] = None
-    details: Optional[Dict[str, Any]] = None
+    error_message: str | None = None
+    details: dict[str, Any] | None = None
 
 
 class DatabaseSyncService:
-    """
-    Sync service for transferring messages from Baileys temp DB to Go main DB
+    """Sync service for transferring messages from Baileys temp DB to Go main DB.
 
     Features:
     - Batch processing for performance
@@ -52,8 +47,7 @@ class DatabaseSyncService:
         batch_size: int = 1000,
         request_timeout: int = DEFAULT_TIMEOUT
     ):
-        """
-        Initialize sync service
+        """Initialize sync service.
 
         Args:
             baileys_url: Base URL for Baileys bridge
@@ -67,8 +61,7 @@ class DatabaseSyncService:
         self.request_timeout = request_timeout
 
     def sync_messages(self, chat_jid: str) -> SyncResult:
-        """
-        Sync messages for a specific chat from Baileys temp DB to Go main DB
+        """Sync messages for a specific chat from Baileys temp DB to Go main DB.
 
         Args:
             chat_jid: WhatsApp JID of the chat to sync
@@ -171,9 +164,8 @@ class DatabaseSyncService:
         self,
         chat_jid: str,
         limit: int
-    ) -> List[Dict[str, Any]]:
-        """
-        Fetch messages from Baileys temp database
+    ) -> list[dict[str, Any]]:
+        """Fetch messages from Baileys temp database.
 
         Args:
             chat_jid: Chat JID to fetch messages for
@@ -203,10 +195,9 @@ class DatabaseSyncService:
     def _deduplicate_messages(
         self,
         chat_jid: str,
-        messages: List[Dict[str, Any]]
-    ) -> Tuple[List[Dict[str, Any]], int]:
-        """
-        Deduplicate messages by checking against Go DB
+        messages: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Deduplicate messages by checking against Go DB.
 
         Uses composite key: (chat_jid, timestamp, message_id)
 
@@ -246,10 +237,9 @@ class DatabaseSyncService:
     def _get_existing_message_ids(
         self,
         chat_jid: str,
-        message_ids: List[str]
-    ) -> set:
-        """
-        Query Go DB for existing message IDs
+        message_ids: list[str]
+    ) -> set[str]:
+        """Query Go DB for existing message IDs.
 
         Args:
             chat_jid: Chat JID
@@ -271,10 +261,9 @@ class DatabaseSyncService:
     def _insert_to_go_db(
         self,
         chat_jid: str,
-        messages: List[Dict[str, Any]]
+        messages: list[dict[str, Any]]
     ) -> int:
-        """
-        Batch insert messages to Go database
+        """Batch insert messages to Go database.
 
         Args:
             chat_jid: Chat JID
@@ -322,8 +311,7 @@ class DatabaseSyncService:
             raise
 
     def _update_checkpoint(self, chat_jid: str, messages_synced: int) -> None:
-        """
-        Update sync checkpoint in Go database
+        """Update sync checkpoint in Go database.
 
         Args:
             chat_jid: Chat JID
@@ -341,8 +329,7 @@ class DatabaseSyncService:
             # Non-critical error, don't fail the sync
 
     def _clear_baileys_temp_db(self) -> None:
-        """
-        Clear all data from Baileys temp database after successful sync
+        """Clear all data from Baileys temp database after successful sync.
 
         Raises:
             requests.RequestException: If HTTP request fails
@@ -360,8 +347,7 @@ class DatabaseSyncService:
 
 
 def sync_baileys_to_go(chat_jid: str) -> SyncResult:
-    """
-    Convenience function to sync messages for a chat
+    """Convenience function to sync messages for a chat.
 
     Args:
         chat_jid: WhatsApp JID of the chat
@@ -373,9 +359,8 @@ def sync_baileys_to_go(chat_jid: str) -> SyncResult:
     return sync_service.sync_messages(chat_jid)
 
 
-def sync_all_chats() -> Dict[str, SyncResult]:
-    """
-    Sync messages for all chats in Baileys temp DB
+def sync_all_chats() -> dict[str, SyncResult]:
+    """Sync messages for all chats in Baileys temp DB.
 
     Returns:
         Dictionary mapping chat_jid to SyncResult

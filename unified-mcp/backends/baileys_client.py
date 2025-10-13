@@ -1,18 +1,13 @@
-"""
-HTTP client for Baileys bridge.
-"""
-import requests
-from typing import Dict, List, Any
+"""HTTP client for Baileys bridge."""
 import time
+from typing import Any
 
-from constants import (
-    BAILEYS_BRIDGE_URL,
-    HEALTH_CHECK_TIMEOUT,
-    SHORT_TIMEOUT
-)
+import requests
+
+from constants import BAILEYS_BRIDGE_URL, HEALTH_CHECK_TIMEOUT, SHORT_TIMEOUT
 
 
-def get_sync_status() -> Dict[str, Any]:
+def get_sync_status() -> dict[str, Any]:
     """Get current history sync status."""
     try:
         response = requests.get(f"{BAILEYS_BRIDGE_URL}/api/sync/status", timeout=HEALTH_CHECK_TIMEOUT)
@@ -27,8 +22,7 @@ def get_sync_status() -> Dict[str, Any]:
 
 
 def wait_for_sync_completion(timeout: int = 300, poll_interval: int = 5) -> bool:
-    """
-    Wait for history sync to complete.
+    """Wait for history sync to complete.
 
     Args:
         timeout: Maximum time to wait in seconds (default 5 minutes)
@@ -65,7 +59,7 @@ def wait_for_sync_completion(timeout: int = 300, poll_interval: int = 5) -> bool
     return False
 
 
-def get_messages() -> List[Dict[str, Any]]:
+def get_messages() -> list[dict[str, Any]]:
     """Fetch all synced messages from Baileys."""
     try:
         response = requests.get(f"{BAILEYS_BRIDGE_URL}/api/messages", timeout=SHORT_TIMEOUT)
@@ -102,7 +96,7 @@ def health_check() -> bool:
 # T053: Business MCP Tools - HTTP clients for Baileys bridge
 # ============================================================================
 
-def get_business_catalog(jid: str) -> Dict[str, Any]:
+def get_business_catalog(jid: str) -> dict[str, Any]:
     """Get business catalog via Baileys bridge.
 
     Args:
@@ -123,7 +117,7 @@ def get_business_catalog(jid: str) -> Dict[str, Any]:
         return {"success": False, "message": f"Error: {e}", "catalog": None, "product_count": 0}
 
 
-def get_product_details(jid: str, product_id: str) -> Dict[str, Any]:
+def get_product_details(jid: str, product_id: str) -> dict[str, Any]:
     """Get product details from business catalog via Baileys bridge.
 
     Args:

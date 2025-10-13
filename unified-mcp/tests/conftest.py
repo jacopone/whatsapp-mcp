@@ -1,23 +1,19 @@
-"""
-Shared pytest fixtures for all test suites.
+"""Shared pytest fixtures for all test suites.
 
 These fixtures are available to unit, integration, and e2e tests.
 """
 
-import pytest
 import sqlite3
-from typing import List, Dict
-from datetime import datetime
 
+import pytest
 
 # Test constants
 TEST_TIMESTAMP_BASE = 1728745200  # 2025-10-12 14:00:00 UTC (deterministic)
 
 
 @pytest.fixture
-def sample_messages() -> List[Dict]:
-    """
-    Provides deterministic test message data.
+def sample_messages() -> list[dict]:
+    """Provides deterministic test message data.
 
     Returns 10+ messages with mixed read/unread status for testing.
     """
@@ -68,9 +64,8 @@ def sample_messages() -> List[Dict]:
 
 
 @pytest.fixture
-def sample_chats() -> List[Dict]:
-    """
-    Provides deterministic test chat data.
+def sample_chats() -> list[dict]:
+    """Provides deterministic test chat data.
 
     Returns 3 direct chats and 2 group chats.
     """
@@ -104,9 +99,8 @@ def sample_chats() -> List[Dict]:
 
 
 @pytest.fixture
-def sample_health_response() -> Dict:
-    """
-    Provides sample health check response data.
+def sample_health_response() -> dict:
+    """Provides sample health check response data.
 
     Returns healthy backend health response.
     """
@@ -122,8 +116,7 @@ def sample_health_response() -> Dict:
 
 @pytest.fixture
 def test_database():
-    """
-    Provides in-memory SQLite database for testing.
+    """Provides in-memory SQLite database for testing.
 
     Yields database connection with automatic cleanup.
     """

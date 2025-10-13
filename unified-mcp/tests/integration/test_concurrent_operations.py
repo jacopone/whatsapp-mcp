@@ -1,30 +1,28 @@
-"""
-Integration tests for concurrent operation safety (Phase 8: US6).
+"""Integration tests for concurrent operation safety (Phase 8: US6).
 
 Tests system handles concurrent operations without race conditions,
 deadlocks, or resource exhaustion.
 """
 
-import pytest
-from unittest.mock import patch, Mock
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from unittest.mock import Mock, patch
 
 
 class TestConcurrentMessageOperations:
-    """Test concurrent message send operations"""
+    """Test concurrent message send operations."""
 
     def test_10_concurrent_message_send_operations_complete_without_errors(self):
-        """T106: Test 10 concurrent message send operations complete without errors"""
-        from routing import get_router, OperationType
+        """T106: Test 10 concurrent message send operations complete without errors."""
+        from routing import OperationType, get_router
 
         router = get_router()
         results = []
         errors = []
 
         def send_message(message_id: int):
-            """Simulate sending a message"""
+            """Simulate sending a message."""
             try:
                 # Mock the operation
                 with patch('backends.health.requests.get') as mock_health:
@@ -67,10 +65,10 @@ class TestConcurrentMessageOperations:
 
 
 class TestConcurrentSyncOperations:
-    """Test concurrent database sync operations"""
+    """Test concurrent database sync operations."""
 
     def test_5_concurrent_database_sync_operations_for_different_chats_complete_without_deadlocks(self):
-        """T107: Test 5 concurrent database sync operations for different chats complete without deadlocks"""
+        """T107: Test 5 concurrent database sync operations for different chats complete without deadlocks."""
         from sync import DatabaseSyncService
 
         sync_service = DatabaseSyncService()
@@ -78,7 +76,7 @@ class TestConcurrentSyncOperations:
         errors = []
 
         def sync_chat(chat_jid: str):
-            """Simulate syncing a chat"""
+            """Simulate syncing a chat."""
             try:
                 # Mock the sync operation
                 with patch.object(sync_service, '_fetch_baileys_messages', return_value=[]), \
@@ -112,7 +110,7 @@ class TestConcurrentSyncOperations:
         assert elapsed < 10.0, f"Operations took {elapsed:.2f}s, may indicate deadlock"
 
     def test_concurrent_sync_operations_for_same_chat_handle_overlapping_correctly_no_duplicates(self):
-        """T111: Test concurrent sync operations for same chat handle overlapping correctly (no duplicates)"""
+        """T111: Test concurrent sync operations for same chat handle overlapping correctly (no duplicates)."""
         from sync import DatabaseSyncService
 
         sync_service = DatabaseSyncService()
@@ -125,7 +123,7 @@ class TestConcurrentSyncOperations:
         lock = threading.Lock()
 
         def sync_same_chat(thread_id: int):
-            """Multiple threads syncing the same chat"""
+            """Multiple threads syncing the same chat."""
             try:
                 # Mock messages with unique IDs per thread
                 messages = [
@@ -166,10 +164,10 @@ class TestConcurrentSyncOperations:
 
 
 class TestConcurrentHealthChecks:
-    """Test concurrent health check operations"""
+    """Test concurrent health check operations."""
 
     def test_20_concurrent_health_checks_complete_in_under_10_seconds(self):
-        """T108: Test 20 concurrent health checks complete in under 10 seconds"""
+        """T108: Test 20 concurrent health checks complete in under 10 seconds."""
         from backends.health import HealthMonitor
 
         monitor = HealthMonitor()
@@ -177,7 +175,7 @@ class TestConcurrentHealthChecks:
         errors = []
 
         def check_health(check_id: int):
-            """Perform health check"""
+            """Perform health check."""
             try:
                 with patch('backends.health.requests.get') as mock_get:
                     # Mock healthy response
@@ -218,18 +216,18 @@ class TestConcurrentHealthChecks:
 
 
 class TestConcurrentFailoverOperations:
-    """Test concurrent route_with_fallback operations"""
+    """Test concurrent route_with_fallback operations."""
 
     def test_concurrent_route_with_fallback_calls_handle_failover_correctly_without_race_conditions(self):
-        """T109: Test concurrent route_with_fallback calls handle failover correctly without race conditions"""
-        from routing import get_router, OperationType
+        """T109: Test concurrent route_with_fallback calls handle failover correctly without race conditions."""
+        from routing import OperationType, get_router
 
         router = get_router()
         results = []
         errors = []
 
         def route_operation(op_id: int):
-            """Route operation with potential fallback"""
+            """Route operation with potential fallback."""
             try:
                 with patch('backends.health.requests.get') as mock_get:
                     # Mock Go fails, Baileys succeeds
@@ -250,7 +248,7 @@ class TestConcurrentFailoverOperations:
                     mock_get.side_effect = mock_get_side_effect
 
                     # Check health to detect Go failure
-                    monitor_health = router.health_monitor.check_all()
+                    router.health_monitor.check_all()
 
                     # Route operation
                     backend = router.get_backend_for_operation(OperationType.SEND_MESSAGE)
@@ -276,16 +274,16 @@ class TestConcurrentFailoverOperations:
 
 
 class TestMixedConcurrentOperations:
-    """Test mixed concurrent operations"""
+    """Test mixed concurrent operations."""
 
     def test_100_mixed_concurrent_operations_complete_successfully(self):
-        """T110: Test 100 mixed concurrent operations (send, sync, health) complete successfully"""
+        """T110: Test 100 mixed concurrent operations (send, sync, health) complete successfully."""
         results = {"send": 0, "sync": 0, "health": 0}
         errors = []
         lock = threading.Lock()
 
         def perform_operation(op_type: str, op_id: int):
-            """Perform operation based on type"""
+            """Perform operation based on type."""
             try:
                 if op_type == "send":
                     # Simulate send
@@ -335,10 +333,10 @@ class TestMixedConcurrentOperations:
 
 
 class TestThreadBarrierSynchronization:
-    """Test concurrent operations with barrier synchronization"""
+    """Test concurrent operations with barrier synchronization."""
 
     def test_concurrent_operations_with_thread_barrier_synchronization_all_start_simultaneously(self):
-        """T112: Test concurrent operations with thread barrier synchronization (all start simultaneously)"""
+        """T112: Test concurrent operations with thread barrier synchronization (all start simultaneously)."""
         num_threads = 10
         barrier = threading.Barrier(num_threads)
         start_times = []
@@ -346,7 +344,7 @@ class TestThreadBarrierSynchronization:
         lock = threading.Lock()
 
         def synchronized_operation(thread_id: int):
-            """Operation that waits at barrier before executing"""
+            """Operation that waits at barrier before executing."""
             try:
                 # Wait for all threads to reach this point
                 barrier.wait()
@@ -383,16 +381,16 @@ class TestThreadBarrierSynchronization:
 
 
 class TestRaceConditionDetection:
-    """Test race condition detection"""
+    """Test race condition detection."""
 
     def test_race_condition_detector_identifies_no_conflicts_in_concurrent_operations(self):
-        """T113: Test race condition detector identifies no conflicts in concurrent operations"""
+        """T113: Test race condition detector identifies no conflicts in concurrent operations."""
         shared_counter = 0
         lock = threading.Lock()
         race_conditions_detected = 0
 
         def safe_increment(thread_id: int):
-            """Thread-safe increment operation"""
+            """Thread-safe increment operation."""
             nonlocal shared_counter
 
             # Read current value
@@ -403,7 +401,7 @@ class TestRaceConditionDetection:
                 shared_counter = current + 1
 
         def unsafe_increment(thread_id: int):
-            """Unsafe increment (would cause race conditions without lock)"""
+            """Unsafe increment (would cause race conditions without lock)."""
             nonlocal shared_counter, race_conditions_detected
 
             # Read without lock

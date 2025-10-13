@@ -2033,6 +2033,8 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 				m.chat_jid,
 				m.sender as sender_jid,
 				COALESCE(
+					-- First try direct match for @lid IDs
+					(SELECT name FROM contacts WHERE jid = m.sender AND name != phone_number),
 					-- Try to get the name from any contact with matching number
 					(SELECT name FROM contacts c2
 					 WHERE SUBSTR(m.sender, 1, INSTR(m.sender, '@') - 1) = SUBSTR(c2.jid, 1, INSTR(c2.jid, '@') - 1)
@@ -2419,6 +2421,27 @@ func main() {
 	err = messageStore.PopulateContacts(client)
 	if err != nil {
 		logger.Warnf("Failed to populate contacts: %v", err)
+	}
+
+	// Populate group participant information to resolve @lid IDs to real names
+	logger.Infof("Syncing group participant names...")
+	err = messageStore.PopulateGroupParticipants(client)
+	if err != nil {
+		logger.Warnf("Failed to populate group participants: %v", err)
+	}
+
+	// Resync @lid entries with existing contacts
+	logger.Infof("Resyncing @lid entries with existing contacts...")
+	err = messageStore.ResyncLIDsWithContacts()
+	if err != nil {
+		logger.Warnf("Failed to resync @lid contacts: %v", err)
+	}
+
+	// Fix @lid mappings with wrong phone numbers
+	logger.Infof("Fixing @lid mappings with correct phone numbers...")
+	err = messageStore.FixLIDMappings(client)
+	if err != nil {
+		logger.Warnf("Failed to fix @lid mappings: %v", err)
 	}
 
 	// Start REST API server

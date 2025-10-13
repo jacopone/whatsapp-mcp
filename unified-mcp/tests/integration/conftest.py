@@ -1,85 +1,91 @@
-"""
-Integration test fixtures for testing with real backends.
+"""Integration test fixtures for testing with real backends.
 
 These fixtures use pytest-docker to manage Docker containers
 for Go and Baileys bridges during integration testing.
 """
 
+import os
+import time
+
 import pytest
 import requests
-import time
-import os
-from typing import Dict, List
 
 
 @pytest.fixture(scope="session")
 def docker_compose_file():
-    """
-    Provides path to docker-compose.yml for integration tests.
-    """
+    """Provides path to docker-compose.yml for integration tests."""
     return os.path.join(os.path.dirname(__file__), "docker-compose.yml")
+
+
+class DockerServicesManager:
+    """Manages Docker Compose services for integration tests."""
+
+    def __init__(self):
+        """Initialize service manager with default backend URLs."""
+        self.go_url = "http://localhost:8080"
+        self.baileys_url = "http://localhost:8081"
+
+    def _get_health_url(self, service_name: str) -> str:
+        """Get health check URL for a service."""
+        url = self.go_url if service_name == "go-backend" else self.baileys_url
+        return f"{url}/health"
+
+    def wait_for_service(self, service_name: str, timeout: int = 60) -> bool:
+        """Wait for service to be healthy.
+
+        Args:
+            service_name: "go-backend" or "baileys-backend"
+            timeout: Maximum time to wait in seconds
+
+        Returns:
+            True if service becomes healthy, False on timeout
+        """
+        health_url = self._get_health_url(service_name)
+        start_time = time.time()
+
+        while time.time() - start_time < timeout:
+            if self._check_service_health(health_url):
+                return True
+            time.sleep(2)
+
+        return False
+
+    def _check_service_health(self, health_url: str) -> bool:
+        """Check if service is healthy."""
+        try:
+            response = requests.get(health_url, timeout=2)
+            return response.status_code == 200
+        except Exception:
+            return False
+
+    def get_service_port(self, service_name: str) -> int | None:
+        """Get the port number for a service."""
+        ports = {
+            "go-backend": 8080,
+            "baileys-backend": 8081
+        }
+        return ports.get(service_name)
+
+    def restart_service(self, service_name: str):
+        """Restart a service (for failover testing)."""
+        # Note: In actual implementation, this would use docker-compose restart
+        # For now, this is a placeholder
+        pass
+
+    def stop_service(self, service_name: str):
+        """Stop a service (for failover testing)."""
+        # Note: In actual implementation, this would use docker-compose stop
+        # For now, this is a placeholder
+        pass
 
 
 @pytest.fixture(scope="session")
 def docker_services(docker_compose_file):
-    """
-    Manages Docker Compose services for integration tests.
+    """Manages Docker Compose services for integration tests.
 
     Starts Go and Baileys bridges, waits for health, provides service manager.
     Scope: session (start once, shared across all integration tests)
     """
-    class DockerServicesManager:
-        def __init__(self):
-            self.go_url = "http://localhost:8080"
-            self.baileys_url = "http://localhost:8081"
-
-        def wait_for_service(self, service_name: str, timeout: int = 60) -> bool:
-            """
-            Wait for service to be healthy.
-
-            Args:
-                service_name: "go-backend" or "baileys-backend"
-                timeout: Maximum time to wait in seconds
-
-            Returns:
-                True if service becomes healthy, False on timeout
-            """
-            url = self.go_url if service_name == "go-backend" else self.baileys_url
-            health_url = f"{url}/health"
-
-            start_time = time.time()
-            while time.time() - start_time < timeout:
-                try:
-                    response = requests.get(health_url, timeout=2)
-                    if response.status_code == 200:
-                        return True
-                except Exception:
-                    pass
-
-                time.sleep(2)
-
-            return False
-
-        def get_service_port(self, service_name: str) -> int:
-            """Get the port number for a service"""
-            if service_name == "go-backend":
-                return 8080
-            elif service_name == "baileys-backend":
-                return 8081
-            return None
-
-        def restart_service(self, service_name: str):
-            """Restart a service (for failover testing)"""
-            # Note: In actual implementation, this would use docker-compose restart
-            # For now, this is a placeholder
-            pass
-
-        def stop_service(self, service_name: str):
-            """Stop a service (for failover testing)"""
-            # Note: In actual implementation, this would use docker-compose stop
-            # For now, this is a placeholder
-            pass
-
     manager = DockerServicesManager()
 
     # Wait for both services to be healthy
@@ -94,8 +100,7 @@ def docker_services(docker_compose_file):
 
 @pytest.fixture
 def integration_database():
-    """
-    Provides test database for integration tests.
+    """Provides test database for integration tests.
 
     Uses real database but with cleanup after each test.
     """
@@ -162,9 +167,8 @@ def integration_database():
 
 
 @pytest.fixture
-def integration_test_data(integration_database) -> Dict:
-    """
-    Provides pre-populated test data for integration scenarios.
+def integration_test_data(integration_database) -> dict:
+    """Provides pre-populated test data for integration scenarios.
 
     Args:
         integration_database: Test database fixture

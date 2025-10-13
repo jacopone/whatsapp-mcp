@@ -1,21 +1,17 @@
-"""
-Backend health monitoring for the unified WhatsApp MCP.
+"""Backend health monitoring for the unified WhatsApp MCP.
 
 Monitors the health of both Go/whatsmeow and Baileys bridges,
 providing detailed status information and availability tracking.
 """
-import requests
-import time
-from typing import Dict, Any, Optional, Tuple, List
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
 import logging
+import time
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any
 
-from constants import (
-    GO_BRIDGE_URL,
-    BAILEYS_BRIDGE_URL,
-    HEALTH_CHECK_TIMEOUT
-)
+import requests
+
+from constants import BAILEYS_BRIDGE_URL, GO_BRIDGE_URL, HEALTH_CHECK_TIMEOUT
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -23,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class BackendHealth:
-    """Health status for a single backend"""
+    """Health status for a single backend."""
     backend: str
     status: str  # "ok", "degraded", "error", "unreachable"
     whatsapp_connected: bool
@@ -31,27 +27,26 @@ class BackendHealth:
     uptime_seconds: int
     last_check: datetime
     response_time_ms: float
-    error_message: Optional[str] = None
-    details: Dict[str, Any] = field(default_factory=dict)
+    error_message: str | None = None
+    details: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class OverallHealth:
-    """Overall health status for all backends"""
+    """Overall health status for all backends."""
     status: str  # "ok", "degraded", "error"
     primary_backend: str  # "go" or "baileys"
-    go_backend: Optional[BackendHealth]
-    baileys_backend: Optional[BackendHealth]
+    go_backend: BackendHealth | None
+    baileys_backend: BackendHealth | None
     last_check: datetime
-    available_backends: List[str]
+    available_backends: list[str]
 
 
 class HealthMonitor:
-    """Monitors the health of both WhatsApp bridges"""
+    """Monitors the health of both WhatsApp bridges."""
 
     def __init__(self, check_interval: int = 30, max_retries: int = 3):
-        """
-        Initialize health monitor
+        """Initialize health monitor.
 
         Args:
             check_interval: Seconds between health checks (default: 30)
@@ -59,14 +54,13 @@ class HealthMonitor:
         """
         self.check_interval = check_interval
         self.max_retries = max_retries
-        self.last_go_health: Optional[BackendHealth] = None
-        self.last_baileys_health: Optional[BackendHealth] = None
+        self.last_go_health: BackendHealth | None = None
+        self.last_baileys_health: BackendHealth | None = None
         self.go_failure_count = 0
         self.baileys_failure_count = 0
 
     def check_go_health(self, timeout: int = HEALTH_CHECK_TIMEOUT) -> BackendHealth:
-        """
-        Check health of Go/whatsmeow bridge
+        """Check health of Go/whatsmeow bridge.
 
         Args:
             timeout: Request timeout in seconds
@@ -160,8 +154,7 @@ class HealthMonitor:
             )
 
     def check_baileys_health(self, timeout: int = HEALTH_CHECK_TIMEOUT) -> BackendHealth:
-        """
-        Check health of Baileys bridge
+        """Check health of Baileys bridge.
 
         Args:
             timeout: Request timeout in seconds
@@ -256,8 +249,7 @@ class HealthMonitor:
             )
 
     def check_all(self) -> OverallHealth:
-        """
-        Check health of all backends
+        """Check health of all backends.
 
         Returns:
             OverallHealth object with combined status
@@ -295,8 +287,7 @@ class HealthMonitor:
         )
 
     def is_backend_available(self, backend: str) -> bool:
-        """
-        Check if a specific backend is available
+        """Check if a specific backend is available.
 
         Args:
             backend: "go" or "baileys"
@@ -313,9 +304,8 @@ class HealthMonitor:
         else:
             return False
 
-    def get_preferred_backend(self) -> Optional[str]:
-        """
-        Get the preferred backend for routing requests
+    def get_preferred_backend(self) -> str | None:
+        """Get the preferred backend for routing requests.
 
         Returns:
             "go" or "baileys" if available, None if both unavailable
@@ -324,8 +314,7 @@ class HealthMonitor:
         return overall.primary_backend if overall.primary_backend != "none" else None
 
     def wait_for_backend(self, backend: str, timeout: int = 60, poll_interval: int = 5) -> bool:
-        """
-        Wait for a backend to become available
+        """Wait for a backend to become available.
 
         Args:
             backend: "go" or "baileys"
@@ -349,9 +338,8 @@ class HealthMonitor:
         logger.warning(f"Timeout waiting for {backend} backend to become available")
         return False
 
-    def get_health_summary(self) -> Dict[str, Any]:
-        """
-        Get a summary of health status for all backends
+    def get_health_summary(self) -> dict[str, Any]:
+        """Get a summary of health status for all backends.
 
         Returns:
             Dictionary with health summary
@@ -385,7 +373,7 @@ _health_monitor = None
 
 
 def get_health_monitor() -> HealthMonitor:
-    """Get global health monitor instance (singleton)"""
+    """Get global health monitor instance (singleton)."""
     global _health_monitor
     if _health_monitor is None:
         _health_monitor = HealthMonitor()

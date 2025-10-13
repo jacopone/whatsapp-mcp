@@ -1,23 +1,21 @@
-"""
-Integration tests for backend failover resilience (Phase 7: US5).
+"""Integration tests for backend failover resilience (Phase 7: US5).
 
 Tests automatic failover when backends become unreachable,
 recovery detection, and failover performance.
 """
 
-import pytest
-from unittest.mock import patch, Mock
-import requests
 import time
+from unittest.mock import Mock, patch
+
+import requests
 
 
 class TestAutomaticFailover:
-    """Test automatic failover when backends become unreachable"""
+    """Test automatic failover when backends become unreachable."""
 
     def test_automatic_failover_when_go_backend_becomes_unreachable_mid_operation(self):
-        """T097: Test automatic failover when Go backend becomes unreachable mid-operation"""
-        from routing import get_router, OperationType, Backend
-        from backends.health import HealthMonitor
+        """T097: Test automatic failover when Go backend becomes unreachable mid-operation."""
+        from routing import get_router
 
         router = get_router()
 
@@ -64,8 +62,8 @@ class TestAutomaticFailover:
             assert "baileys" in health2.available_backends
 
     def test_automatic_failover_when_baileys_backend_becomes_unreachable_mid_operation(self):
-        """T098: Test automatic failover when Baileys backend becomes unreachable mid-operation"""
-        from routing import get_router, Backend
+        """T098: Test automatic failover when Baileys backend becomes unreachable mid-operation."""
+        from routing import get_router
 
         router = get_router()
 
@@ -96,10 +94,10 @@ class TestAutomaticFailover:
 
 
 class TestBothBackendsFailure:
-    """Test system behavior when both backends fail"""
+    """Test system behavior when both backends fail."""
 
     def test_system_returns_no_backend_available_error_when_both_backends_fail_simultaneously(self):
-        """T099: Test system returns \"No backend available\" error when both backends fail simultaneously"""
+        r"""T099: Test system returns \"No backend available\" error when both backends fail simultaneously."""
         from routing import get_router
 
         router = get_router()
@@ -115,10 +113,10 @@ class TestBothBackendsFailure:
 
 
 class TestBackendRecovery:
-    """Test backend recovery detection"""
+    """Test backend recovery detection."""
 
     def test_backend_recovery_detection_after_go_backend_restarts(self):
-        """T100: Test backend recovery detection after Go backend restarts"""
+        """T100: Test backend recovery detection after Go backend restarts."""
         from backends.health import HealthMonitor
 
         monitor = HealthMonitor()
@@ -170,7 +168,7 @@ class TestBackendRecovery:
             assert health2.go_backend.uptime_seconds == 10  # Verify it's the restarted instance
 
     def test_backend_recovery_detection_after_baileys_backend_restarts(self):
-        """T101: Test backend recovery detection after Baileys backend restarts"""
+        """T101: Test backend recovery detection after Baileys backend restarts."""
         from backends.health import HealthMonitor
 
         monitor = HealthMonitor()
@@ -223,11 +221,11 @@ class TestBackendRecovery:
 
 
 class TestFailurePerformance:
-    """Test operations fail fast when backends unavailable"""
+    """Test operations fail fast when backends unavailable."""
 
     def test_operations_fail_fast_under_10s_when_no_backends_available(self):
-        """T102: Test operations fail fast (under 10s) when no backends available"""
-        from routing import get_router, OperationType
+        """T102: Test operations fail fast (under 10s) when no backends available."""
+        from routing import get_router
 
         router = get_router()
 
@@ -246,11 +244,10 @@ class TestFailurePerformance:
 
 
 class TestFastestStrategyFailover:
-    """Test FASTEST strategy switches when response times change"""
+    """Test FASTEST strategy switches when response times change."""
 
     def test_fastest_strategy_switches_to_faster_backend_when_response_times_change(self):
-        """T103: Test FASTEST strategy switches to faster backend when response times change"""
-        from routing import get_router
+        """T103: Test FASTEST strategy switches to faster backend when response times change."""
         from backends.health import HealthMonitor
 
         monitor = HealthMonitor()
@@ -299,11 +296,10 @@ class TestFastestStrategyFailover:
 
 
 class TestNetworkPartition:
-    """Test failover handles network partition scenarios"""
+    """Test failover handles network partition scenarios."""
 
     def test_failover_handles_network_partition_backend_unreachable_but_not_crashed(self):
-        """T104: Test failover handles network partition (backend unreachable but not crashed)"""
-        from routing import get_router
+        """T104: Test failover handles network partition (backend unreachable but not crashed)."""
         from backends.health import HealthMonitor
 
         monitor = HealthMonitor()

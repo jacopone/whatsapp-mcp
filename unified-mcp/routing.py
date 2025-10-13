@@ -1,14 +1,14 @@
-"""
-Request routing logic for the unified WhatsApp MCP.
+"""Request routing logic for the unified WhatsApp MCP.
 
 Routes requests to the appropriate backend (Go/whatsmeow or Baileys)
 based on availability, health status, and operation requirements.
 """
 import logging
-from typing import Literal, Optional, Callable, Any, Tuple
+from collections.abc import Callable
 from enum import Enum
-from backends.health import get_health_monitor, HealthMonitor
-from backends import go_client, baileys_client
+from typing import Any, Literal
+
+from backends.health import HealthMonitor, get_health_monitor
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,7 @@ Backend = Literal["go", "baileys"]
 
 
 class OperationType(Enum):
-    """Types of operations that can be routed"""
+    """Types of operations that can be routed."""
     # Message operations
     SEND_MESSAGE = "send_message"
     SEND_FILE = "send_file"
@@ -44,7 +44,7 @@ class OperationType(Enum):
 
 
 class RoutingStrategy(Enum):
-    """Routing strategies for different operation types"""
+    """Routing strategies for different operation types."""
     PRIMARY_ONLY = "primary_only"      # Use primary backend only
     PREFER_GO = "prefer_go"            # Prefer Go, fallback to Baileys
     PREFER_BAILEYS = "prefer_baileys"  # Prefer Baileys, fallback to Go
@@ -53,20 +53,19 @@ class RoutingStrategy(Enum):
 
 
 class Router:
-    """Routes requests to appropriate backend based on health and requirements"""
+    """Routes requests to appropriate backend based on health and requirements."""
 
-    def __init__(self, health_monitor: Optional[HealthMonitor] = None):
-        """
-        Initialize router
+    def __init__(self, health_monitor: HealthMonitor | None = None) -> None:
+        """Initialize router.
 
         Args:
             health_monitor: HealthMonitor instance (defaults to global instance)
         """
-        self.health_monitor = health_monitor or get_health_monitor()
-        self.round_robin_counter = 0
+        self.health_monitor: HealthMonitor = health_monitor or get_health_monitor()
+        self.round_robin_counter: int = 0
 
         # Define routing strategies for each operation type
-        self.operation_strategies = {
+        self.operation_strategies: dict[OperationType, RoutingStrategy] = {
             # Message operations - prefer Go (more stable)
             OperationType.SEND_MESSAGE: RoutingStrategy.PREFER_GO,
             OperationType.SEND_FILE: RoutingStrategy.PREFER_GO,
@@ -91,13 +90,58 @@ class Router:
             OperationType.LIST_MESSAGES: RoutingStrategy.PREFER_GO,
         }
 
+    def _select_with_preference(
+        self, preferred: Backend, fallback: Backend, available: list[str], operation_name: str
+    ) -> Backend | None:
+        """Select backend with preference and fallback.
+
+        Args:
+            preferred: The preferred backend
+            fallback: The fallback backend if preferred unavailable
+            available: List of available backends
+            operation_name: Name of operation for logging
+
+        Returns:
+            Selected backend or None
+        """
+        if preferred in available:
+            return preferred
+        elif fallback in available:
+            logger.info(f"{preferred.capitalize()} backend unavailable for {operation_name}, using {fallback.capitalize()}")
+            return fallback
+        return None
+
+    def _select_fastest_backend(self, overall_health: Any) -> Backend | None:
+        """Select the fastest available backend.
+
+        Args:
+            overall_health: Overall health status
+
+        Returns:
+            Fastest backend or None
+        """
+        go_backend = overall_health.go_backend
+        baileys_backend = overall_health.baileys_backend
+
+        if not (go_backend and baileys_backend):
+            return None
+
+        go_ok = go_backend.status in ["ok", "degraded"]
+        baileys_ok = baileys_backend.status in ["ok", "degraded"]
+
+        if go_ok and baileys_ok:
+            if go_backend.response_time_ms < baileys_backend.response_time_ms:
+                return "go"
+            else:
+                return "baileys"
+        return None
+
     def select_backend(
         self,
         operation: OperationType,
-        required_backend: Optional[Backend] = None
-    ) -> Optional[Backend]:
-        """
-        Select the best backend for the given operation
+        required_backend: Backend | None = None
+    ) -> Backend | None:
+        """Select the best backend for the given operation.
 
         Args:
             operation: Type of operation to route
@@ -111,60 +155,42 @@ class Router:
             if self.health_monitor.is_backend_available(required_backend):
                 logger.debug(f"Using required backend: {required_backend}")
                 return required_backend
-            else:
-                logger.warning(f"Required backend {required_backend} is not available")
-                return None
+            logger.warning(f"Required backend {required_backend} is not available")
+            return None
 
         # Get routing strategy for this operation
         strategy = self.operation_strategies.get(operation, RoutingStrategy.PREFER_GO)
 
         # Get health status
         overall_health = self.health_monitor.check_all()
+        available_backends = overall_health.available_backends
 
         # Apply routing strategy
         if strategy == RoutingStrategy.PRIMARY_ONLY:
-            if overall_health.primary_backend != "none":
-                return overall_health.primary_backend
-            return None
+            primary = overall_health.primary_backend
+            return primary if primary != "none" else None
 
-        elif strategy == RoutingStrategy.PREFER_GO:
-            if "go" in overall_health.available_backends:
-                return "go"
-            elif "baileys" in overall_health.available_backends:
-                logger.info(f"Go backend unavailable for {operation.value}, using Baileys")
-                return "baileys"
-            return None
+        if strategy == RoutingStrategy.PREFER_GO:
+            return self._select_with_preference("go", "baileys", available_backends, operation.value)
 
-        elif strategy == RoutingStrategy.PREFER_BAILEYS:
-            if "baileys" in overall_health.available_backends:
-                return "baileys"
-            elif "go" in overall_health.available_backends:
-                logger.info(f"Baileys backend unavailable for {operation.value}, using Go")
-                return "go"
-            return None
+        if strategy == RoutingStrategy.PREFER_BAILEYS:
+            return self._select_with_preference("baileys", "go", available_backends, operation.value)
 
-        elif strategy == RoutingStrategy.ROUND_ROBIN:
-            if len(overall_health.available_backends) == 0:
+        if strategy == RoutingStrategy.ROUND_ROBIN:
+            if not available_backends:
                 return None
-
             # Alternate between available backends
             self.round_robin_counter += 1
-            idx = self.round_robin_counter % len(overall_health.available_backends)
-            return overall_health.available_backends[idx]
+            idx = self.round_robin_counter % len(available_backends)
+            return available_backends[idx]
 
-        elif strategy == RoutingStrategy.FASTEST:
-            # Select backend with lowest response time
-            if overall_health.go_backend and overall_health.baileys_backend:
-                if overall_health.go_backend.status in ["ok", "degraded"] and \
-                   overall_health.baileys_backend.status in ["ok", "degraded"]:
-                    # Both available, choose faster
-                    if overall_health.go_backend.response_time_ms < overall_health.baileys_backend.response_time_ms:
-                        return "go"
-                    else:
-                        return "baileys"
-
+        if strategy == RoutingStrategy.FASTEST:
+            # Try to select fastest
+            fastest = self._select_fastest_backend(overall_health)
+            if fastest:
+                return fastest
             # Fallback to prefer_go logic
-            return self.select_backend(operation, required_backend=None)
+            return self._select_with_preference("go", "baileys", available_backends, operation.value)
 
         return None
 
@@ -172,13 +198,12 @@ class Router:
         self,
         operation: OperationType,
         go_func: Callable[..., Any],
-        baileys_func: Optional[Callable[..., Any]] = None,
-        required_backend: Optional[Backend] = None,
+        baileys_func: Callable[..., Any] | None = None,
+        required_backend: Backend | None = None,
         *args,
         **kwargs
-    ) -> Tuple[bool, Any]:
-        """
-        Route a function call to the appropriate backend
+    ) -> tuple[bool, Any]:
+        """Route a function call to the appropriate backend.
 
         Args:
             operation: Type of operation being performed
@@ -223,12 +248,11 @@ class Router:
         self,
         operation: OperationType,
         go_func: Callable[..., Any],
-        baileys_func: Optional[Callable[..., Any]] = None,
+        baileys_func: Callable[..., Any] | None = None,
         *args,
         **kwargs
-    ) -> Tuple[bool, Any]:
-        """
-        Route a call with automatic fallback to other backend if primary fails
+    ) -> tuple[bool, Any]:
+        """Route a call with automatic fallback to other backend if primary fails.
 
         Args:
             operation: Type of operation being performed
@@ -275,9 +299,8 @@ class Router:
             operation, go_func, baileys_func, required_backend=fallback_backend, *args, **kwargs
         )
 
-    def get_backend_for_operation(self, operation: OperationType) -> Optional[Backend]:
-        """
-        Get the backend that would be used for an operation (without executing it)
+    def get_backend_for_operation(self, operation: OperationType) -> Backend | None:
+        """Get the backend that would be used for an operation (without executing it).
 
         Args:
             operation: Type of operation
@@ -288,8 +311,7 @@ class Router:
         return self.select_backend(operation)
 
     def is_operation_available(self, operation: OperationType) -> bool:
-        """
-        Check if an operation can be performed (i.e., if a backend is available)
+        """Check if an operation can be performed (i.e., if a backend is available).
 
         Args:
             operation: Type of operation
@@ -299,9 +321,8 @@ class Router:
         """
         return self.select_backend(operation) is not None
 
-    def get_routing_info(self) -> dict:
-        """
-        Get routing information and statistics
+    def get_routing_info(self) -> dict[str, Any]:
+        """Get routing information and statistics.
 
         Returns:
             Dictionary with routing info
@@ -333,7 +354,7 @@ _router = None
 
 
 def get_router() -> Router:
-    """Get global router instance (singleton)"""
+    """Get global router instance (singleton)."""
     global _router
     if _router is None:
         _router = Router()

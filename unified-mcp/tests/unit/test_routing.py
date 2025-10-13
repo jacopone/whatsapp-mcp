@@ -1,20 +1,18 @@
-"""
-Unit tests for routing.py - Request routing logic
+"""Unit tests for routing.py - Request routing logic.
 
 Tests routing strategies, backend selection, failover, and error handling.
 Target: 80%+ coverage of routing.py (341 lines)
 """
 import pytest
-import responses
-from routing import Router, OperationType, RoutingStrategy, Backend
-from backends.health import HealthMonitor
+
+from routing import OperationType, Router, RoutingStrategy
 
 
 class TestBackendSelection:
-    """Test backend selection based on health status"""
+    """Test backend selection based on health status."""
 
     def test_routing_selects_go_when_baileys_down(self, mock_health_monitor):
-        """T027: Test routing selects Go backend when Baileys is down"""
+        """T027: Test routing selects Go backend when Baileys is down."""
         # Setup: Baileys down, Go healthy
         mock_health_monitor.set_go_health("ok", response_time_ms=100.0)
         mock_health_monitor.set_baileys_health("error", response_time_ms=0.0)
@@ -31,7 +29,7 @@ class TestBackendSelection:
         assert backend == "go", "Should fallback to Go when Baileys is down"
 
     def test_routing_selects_baileys_when_go_down(self, mock_health_monitor):
-        """T028: Test routing selects Baileys backend when Go is down"""
+        """T028: Test routing selects Baileys backend when Go is down."""
         # Setup: Go down, Baileys healthy
         mock_health_monitor.set_go_health("error", response_time_ms=0.0)
         mock_health_monitor.set_baileys_health("ok", response_time_ms=120.0)
@@ -48,7 +46,7 @@ class TestBackendSelection:
         assert backend == "baileys", "Should fallback to Baileys when Go is down"
 
     def test_routing_returns_none_when_both_unavailable(self, mock_health_monitor):
-        """T031: Test routing returns None when both backends are unavailable"""
+        """T031: Test routing returns None when both backends are unavailable."""
         # Setup: Both backends down
         mock_health_monitor.set_go_health("error", response_time_ms=0.0)
         mock_health_monitor.set_baileys_health("error", response_time_ms=0.0)
@@ -64,7 +62,7 @@ class TestBackendSelection:
         assert backend is None, "Should return None for all operation types"
 
     def test_routing_returns_none_when_required_backend_unavailable(self, mock_health_monitor):
-        """T032: Test routing returns None when required backend is unavailable (no fallback)"""
+        """T032: Test routing returns None when required backend is unavailable (no fallback)."""
         # Setup: Go healthy, Baileys down
         mock_health_monitor.set_go_health("ok", response_time_ms=100.0)
         mock_health_monitor.set_baileys_health("error", response_time_ms=0.0)
@@ -82,10 +80,10 @@ class TestBackendSelection:
 
 
 class TestRoutingStrategies:
-    """Test different routing strategies (PREFER_GO, PREFER_BAILEYS, etc.)"""
+    """Test different routing strategies (PREFER_GO, PREFER_BAILEYS, etc.)."""
 
     def test_routing_prefers_baileys_for_sync_full_history(self, mock_health_monitor):
-        """T029: Test routing prefers Baileys for SYNC_FULL_HISTORY operation (PREFER_BAILEYS strategy)"""
+        """T029: Test routing prefers Baileys for SYNC_FULL_HISTORY operation (PREFER_BAILEYS strategy)."""
         # Setup: Both backends healthy
         mock_health_monitor.set_go_health("ok", response_time_ms=100.0)
         mock_health_monitor.set_baileys_health("ok", response_time_ms=120.0)
@@ -102,7 +100,7 @@ class TestRoutingStrategies:
         assert strategy == RoutingStrategy.PREFER_BAILEYS, "Strategy should be PREFER_BAILEYS"
 
     def test_routing_prefers_go_for_send_message(self, mock_health_monitor):
-        """T030: Test routing prefers Go for SEND_MESSAGE operation (PREFER_GO strategy)"""
+        """T030: Test routing prefers Go for SEND_MESSAGE operation (PREFER_GO strategy)."""
         # Setup: Both backends healthy
         mock_health_monitor.set_go_health("ok", response_time_ms=100.0)
         mock_health_monitor.set_baileys_health("ok", response_time_ms=120.0)
@@ -119,7 +117,7 @@ class TestRoutingStrategies:
         assert strategy == RoutingStrategy.PREFER_GO, "Strategy should be PREFER_GO"
 
     def test_round_robin_alternates_backends(self, mock_health_monitor):
-        """T033: Test ROUND_ROBIN strategy alternates backends across multiple requests"""
+        """T033: Test ROUND_ROBIN strategy alternates backends across multiple requests."""
         # Setup: Both backends healthy
         mock_health_monitor.set_go_health("ok", response_time_ms=100.0)
         mock_health_monitor.set_baileys_health("ok", response_time_ms=120.0)
@@ -147,7 +145,7 @@ class TestRoutingStrategies:
         assert backend1 != backend2 or len({"go", "baileys"}) == 1, "Should alternate between backends"
 
     def test_round_robin_counter_increments(self, mock_health_monitor):
-        """T034: Test ROUND_ROBIN counter increments correctly"""
+        """T034: Test ROUND_ROBIN counter increments correctly."""
         # Setup: Both backends healthy
         mock_health_monitor.set_go_health("ok", response_time_ms=100.0)
         mock_health_monitor.set_baileys_health("ok", response_time_ms=120.0)
@@ -173,7 +171,7 @@ class TestRoutingStrategies:
         assert router.round_robin_counter == 3, "Counter should increment to 3"
 
     def test_fastest_strategy_selects_lower_response_time(self, mock_health_monitor):
-        """T035: Test FASTEST strategy selects backend with lower response time"""
+        """T035: Test FASTEST strategy selects backend with lower response time."""
         # Setup: Go faster than Baileys
         mock_health_monitor.set_go_health("ok", response_time_ms=50.0)
         mock_health_monitor.set_baileys_health("ok", response_time_ms=200.0)
@@ -190,7 +188,7 @@ class TestRoutingStrategies:
         assert backend == "go", "FASTEST should select Go (50ms < 200ms)"
 
     def test_fastest_strategy_switches_when_response_times_change(self, mock_health_monitor):
-        """T036: Test FASTEST strategy switches when response times change"""
+        """T036: Test FASTEST strategy switches when response times change."""
         # Setup: Initially Go faster
         mock_health_monitor.set_go_health("ok", response_time_ms=50.0)
         mock_health_monitor.set_baileys_health("ok", response_time_ms=200.0)
@@ -215,7 +213,7 @@ class TestRoutingStrategies:
         assert backend2 == "baileys", "Should switch to Baileys (now faster)"
 
     def test_primary_only_strategy_respects_primary(self, mock_health_monitor):
-        """T044: Test PRIMARY_ONLY strategy respects primary backend setting"""
+        """T044: Test PRIMARY_ONLY strategy respects primary backend setting."""
         # Setup: Both backends healthy, Go is primary
         mock_health_monitor.set_go_health("ok", response_time_ms=100.0)
         mock_health_monitor.set_baileys_health("ok", response_time_ms=120.0)
@@ -234,10 +232,10 @@ class TestRoutingStrategies:
 
 
 class TestRouteFallback:
-    """Test route_with_fallback functionality"""
+    """Test route_with_fallback functionality."""
 
     def test_route_with_fallback_retries_on_secondary(self, mock_health_monitor):
-        """T037: Test route_with_fallback retries on secondary backend when primary fails"""
+        """T037: Test route_with_fallback retries on secondary backend when primary fails."""
         # Setup: Both backends available
         mock_health_monitor.set_go_health("ok", response_time_ms=100.0)
         mock_health_monitor.set_baileys_health("ok", response_time_ms=120.0)
@@ -270,7 +268,7 @@ class TestRouteFallback:
         assert result == "baileys success", "Should return fallback result"
 
     def test_route_with_fallback_returns_none_when_both_fail(self, mock_health_monitor):
-        """T038: Test route_with_fallback returns None when both backends fail"""
+        """T038: Test route_with_fallback returns None when both backends fail."""
         # Setup: Both backends available but both will fail
         mock_health_monitor.set_go_health("ok", response_time_ms=100.0)
         mock_health_monitor.set_baileys_health("ok", response_time_ms=120.0)
@@ -298,7 +296,7 @@ class TestRouteFallback:
 
 
 class TestOperationHandling:
-    """Test handling of different operation types"""
+    """Test handling of different operation types."""
 
     @pytest.mark.parametrize("operation,expected_strategy", [
         (OperationType.SEND_MESSAGE, RoutingStrategy.PREFER_GO),
@@ -318,7 +316,7 @@ class TestOperationHandling:
         (OperationType.LIST_MESSAGES, RoutingStrategy.PREFER_GO),
     ])
     def test_routing_handles_all_operation_types(self, mock_health_monitor, operation, expected_strategy):
-        """T039: Test routing handles all 15+ operation types correctly (parametrized)"""
+        """T039: Test routing handles all 15+ operation types correctly (parametrized)."""
         # Setup: Both backends healthy
         mock_health_monitor.set_go_health("ok", response_time_ms=100.0)
         mock_health_monitor.set_baileys_health("ok", response_time_ms=120.0)
@@ -337,10 +335,10 @@ class TestOperationHandling:
 
 
 class TestUnknownOperationType:
-    """Test handling of unknown or new operation types"""
+    """Test handling of unknown or new operation types."""
 
     def test_routing_handles_unknown_operation_type_gracefully(self, mock_health_monitor):
-        """T040: Test routing handles unknown operation type gracefully"""
+        """T040: Test routing handles unknown operation type gracefully."""
         # Setup: Both backends healthy
         mock_health_monitor.set_go_health("ok", response_time_ms=100.0)
         mock_health_monitor.set_baileys_health("ok", response_time_ms=120.0)
@@ -370,10 +368,10 @@ class TestUnknownOperationType:
 
 
 class TestRoutingInfo:
-    """Test routing info and availability checks"""
+    """Test routing info and availability checks."""
 
     def test_get_routing_info_returns_accurate_configuration(self, mock_health_monitor):
-        """T042: Test get_routing_info returns accurate routing configuration"""
+        """T042: Test get_routing_info returns accurate routing configuration."""
         # Setup: Both backends healthy
         mock_health_monitor.set_go_health("ok", response_time_ms=100.0)
         mock_health_monitor.set_baileys_health("ok", response_time_ms=120.0)
@@ -401,7 +399,7 @@ class TestRoutingInfo:
         assert info["backend_health"]["go"]["response_time_ms"] == 100.0, "Go response time should match"
 
     def test_is_operation_available_indicates_backend_availability(self, mock_health_monitor):
-        """T043: Test is_operation_available correctly indicates backend availability"""
+        """T043: Test is_operation_available correctly indicates backend availability."""
         # Setup: Only Go available
         mock_health_monitor.set_go_health("ok", response_time_ms=100.0)
         mock_health_monitor.set_baileys_health("error", response_time_ms=0.0)
@@ -427,10 +425,10 @@ class TestRoutingInfo:
 
 
 class TestErrorHandling:
-    """Test error handling and edge cases"""
+    """Test error handling and edge cases."""
 
     def test_routing_handles_invalid_backend_name_error(self, mock_health_monitor):
-        """T041: Test routing handles invalid backend name error"""
+        """T041: Test routing handles invalid backend name error."""
         # Setup: Both backends healthy
         mock_health_monitor.set_go_health("ok", response_time_ms=100.0)
         mock_health_monitor.set_baileys_health("ok", response_time_ms=120.0)
@@ -445,7 +443,7 @@ class TestErrorHandling:
         # Test: route_call with invalid backend name should fail gracefully
         # We need to manually test this by calling route_call with forced invalid backend
         # Note: select_backend won't return invalid values, so we test route_call directly
-        success, result = router.route_call(
+        success, _result = router.route_call(
             OperationType.SEND_MESSAGE,
             test_func,
             test_func,
@@ -457,7 +455,7 @@ class TestErrorHandling:
         assert success is True or success is False, "Should handle backend gracefully"
 
     def test_routing_logs_errors_when_backends_unavailable(self, mock_health_monitor, caplog):
-        """T045: Test routing logs appropriate errors when backends unavailable"""
+        """T045: Test routing logs appropriate errors when backends unavailable."""
         import logging
 
         # Setup: Both backends down
@@ -487,7 +485,7 @@ class TestErrorHandling:
             "Should log error when no backends available"
 
     def test_routing_with_degraded_backend(self, mock_health_monitor):
-        """T046: Test routing with degraded backend (partial availability)"""
+        """T046: Test routing with degraded backend (partial availability)."""
         # Setup: Go degraded, Baileys healthy
         mock_health_monitor.set_go_health("degraded", response_time_ms=500.0)
         mock_health_monitor.set_baileys_health("ok", response_time_ms=120.0)
@@ -505,11 +503,10 @@ class TestErrorHandling:
 
 
 class TestConcurrentAccess:
-    """Test concurrent request handling"""
+    """Test concurrent request handling."""
 
     def test_routing_handles_concurrent_requests_without_corruption(self, mock_health_monitor):
-        """T047: Test routing handles concurrent requests without state corruption"""
-        import threading
+        """T047: Test routing handles concurrent requests without state corruption."""
         from concurrent.futures import ThreadPoolExecutor
 
         # Setup: Both backends healthy

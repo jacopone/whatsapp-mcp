@@ -1,27 +1,23 @@
-"""
-Unit tests for backends/health.py - Backend health monitoring
+"""Unit tests for backends/health.py - Backend health monitoring.
 
 Tests health check scenarios, status aggregation, and failover logic.
 Target: 75%+ coverage of backends/health.py (391 lines)
 """
-import pytest
-import responses
-import requests
 import time
-from datetime import datetime
-from unittest.mock import patch, Mock
-from backends.health import (
-    HealthMonitor, BackendHealth, OverallHealth,
-    get_health_monitor, GO_BRIDGE_URL, BAILEYS_BRIDGE_URL
-)
+from unittest.mock import Mock, patch
+
+import requests
+import responses
+
+from backends.health import BAILEYS_BRIDGE_URL, GO_BRIDGE_URL, HealthMonitor, get_health_monitor
 
 
 class TestGoHealthChecks:
-    """Test Go backend health check scenarios"""
+    """Test Go backend health check scenarios."""
 
     @responses.activate
     def test_check_go_health_handles_http_200_ok(self):
-        """T067: Test check_go_health handles HTTP 200 OK response correctly"""
+        """T067: Test check_go_health handles HTTP 200 OK response correctly."""
         # Setup: Go returns healthy status
         responses.add(
             responses.GET,
@@ -51,7 +47,7 @@ class TestGoHealthChecks:
         assert monitor.go_failure_count == 0
 
     def test_check_go_health_handles_timeout(self):
-        """T068: Test check_go_health handles connection timeout (5s exceeded)"""
+        """T068: Test check_go_health handles connection timeout (5s exceeded)."""
         monitor = HealthMonitor()
 
         # Mock requests.get to raise Timeout
@@ -67,7 +63,7 @@ class TestGoHealthChecks:
         assert monitor.go_failure_count == 1
 
     def test_check_go_health_handles_connection_refused(self):
-        """T069: Test check_go_health handles connection refused (backend down)"""
+        """T069: Test check_go_health handles connection refused (backend down)."""
         monitor = HealthMonitor()
 
         # Mock requests.get to raise ConnectionError
@@ -84,7 +80,7 @@ class TestGoHealthChecks:
 
     @responses.activate
     def test_check_go_health_handles_http_500_error(self):
-        """T070: Test check_go_health handles HTTP 500 error response"""
+        """T070: Test check_go_health handles HTTP 500 error response."""
         # Setup: Go returns HTTP 500
         responses.add(
             responses.GET,
@@ -107,7 +103,7 @@ class TestGoHealthChecks:
 
     @responses.activate
     def test_check_go_health_records_response_time_accurately(self):
-        """T071: Test check_go_health records response time accurately"""
+        """T071: Test check_go_health records response time accurately."""
         # Setup: Go returns healthy with measured response time
         responses.add(
             responses.GET,
@@ -134,11 +130,11 @@ class TestGoHealthChecks:
 
 
 class TestBaileysHealthChecks:
-    """Test Baileys backend health check scenarios"""
+    """Test Baileys backend health check scenarios."""
 
     @responses.activate
     def test_check_baileys_health_handles_http_200_ok(self):
-        """T072: Test check_baileys_health handles HTTP 200 OK response"""
+        """T072: Test check_baileys_health handles HTTP 200 OK response."""
         # Setup: Baileys returns healthy status
         responses.add(
             responses.GET,
@@ -166,7 +162,7 @@ class TestBaileysHealthChecks:
         assert monitor.baileys_failure_count == 0
 
     def test_check_baileys_health_handles_timeout(self):
-        """T073: Test check_baileys_health handles connection timeout"""
+        """T073: Test check_baileys_health handles connection timeout."""
         monitor = HealthMonitor()
 
         # Mock requests.get to raise Timeout
@@ -182,7 +178,7 @@ class TestBaileysHealthChecks:
         assert monitor.baileys_failure_count == 1
 
     def test_check_baileys_health_handles_connection_refused(self):
-        """T074: Test check_baileys_health handles connection refused"""
+        """T074: Test check_baileys_health handles connection refused."""
         monitor = HealthMonitor()
 
         # Mock requests.get to raise ConnectionError
@@ -199,7 +195,7 @@ class TestBaileysHealthChecks:
 
     @responses.activate
     def test_check_baileys_health_handles_http_500_error(self):
-        """T075: Test check_baileys_health handles HTTP 500 error"""
+        """T075: Test check_baileys_health handles HTTP 500 error."""
         # Setup: Baileys returns HTTP 500
         responses.add(
             responses.GET,
@@ -222,11 +218,11 @@ class TestBaileysHealthChecks:
 
 
 class TestHealthAggregation:
-    """Test check_all aggregation logic"""
+    """Test check_all aggregation logic."""
 
     @responses.activate
     def test_check_all_when_both_backends_healthy(self):
-        """T076: Test check_all aggregates health when both backends healthy (overall status="ok")"""
+        """T076: Test check_all aggregates health when both backends healthy (overall status="ok")."""
         # Setup: Both backends healthy
         responses.add(
             responses.GET,
@@ -254,7 +250,7 @@ class TestHealthAggregation:
         assert "baileys" in overall.available_backends
 
     def test_check_all_when_only_go_healthy(self):
-        """T077: Test check_all aggregates health when only Go healthy (overall status="degraded")"""
+        """T077: Test check_all aggregates health when only Go healthy (overall status="degraded")."""
         monitor = HealthMonitor()
 
         # Mock: Go healthy, Baileys down
@@ -283,7 +279,7 @@ class TestHealthAggregation:
         assert "go" in overall.available_backends
 
     def test_check_all_when_only_baileys_healthy(self):
-        """T078: Test check_all aggregates health when only Baileys healthy (overall status="degraded")"""
+        """T078: Test check_all aggregates health when only Baileys healthy (overall status="degraded")."""
         monitor = HealthMonitor()
 
         # Mock: Go down, Baileys healthy
@@ -311,7 +307,7 @@ class TestHealthAggregation:
         assert "baileys" in overall.available_backends
 
     def test_check_all_when_both_backends_down(self):
-        """T079: Test check_all aggregates health when both backends down (overall status="error", empty available list)"""
+        """T079: Test check_all aggregates health when both backends down (overall status="error", empty available list)."""
         monitor = HealthMonitor()
 
         # Mock: Both backends down
@@ -326,11 +322,11 @@ class TestHealthAggregation:
 
 
 class TestPrimaryBackendSelection:
-    """Test primary backend selection logic"""
+    """Test primary backend selection logic."""
 
     @responses.activate
     def test_primary_backend_prefers_go_when_both_available(self):
-        """T080: Test primary backend selection prefers Go over Baileys when both available"""
+        """T080: Test primary backend selection prefers Go over Baileys when both available."""
         # Setup: Both backends available
         responses.add(
             responses.GET,
@@ -355,11 +351,11 @@ class TestPrimaryBackendSelection:
 
 
 class TestFailureCounters:
-    """Test failure counter management"""
+    """Test failure counter management."""
 
     @responses.activate
     def test_failure_counter_resets_on_successful_health_check(self):
-        """T081: Test failure counter resets on successful health check"""
+        """T081: Test failure counter resets on successful health check."""
         monitor = HealthMonitor()
 
         # Setup initial failure
@@ -382,7 +378,7 @@ class TestFailureCounters:
 
     @responses.activate
     def test_failure_counter_increments_on_failed_health_check(self):
-        """T082: Test failure counter increments on failed health check"""
+        """T082: Test failure counter increments on failed health check."""
         monitor = HealthMonitor()
 
         # Setup: Go connection refused
@@ -399,20 +395,20 @@ class TestFailureCounters:
         assert monitor.go_failure_count == 0
 
         # Test: First failure
-        health1 = monitor.check_go_health()
+        monitor.check_go_health()
         assert monitor.go_failure_count == 1
 
         # Test: Second failure
-        health2 = monitor.check_go_health()
+        monitor.check_go_health()
         assert monitor.go_failure_count == 2
 
 
 class TestWaitForBackend:
-    """Test wait_for_backend functionality"""
+    """Test wait_for_backend functionality."""
 
     @responses.activate
     def test_wait_for_backend_polls_until_available(self):
-        """T083: Test wait_for_backend polls until backend becomes available"""
+        """T083: Test wait_for_backend polls until backend becomes available."""
         monitor = HealthMonitor()
 
         # Setup: First 2 calls fail, 3rd succeeds
@@ -439,7 +435,7 @@ class TestWaitForBackend:
 
     @responses.activate
     def test_wait_for_backend_times_out_if_never_available(self):
-        """T084: Test wait_for_backend times out if backend never becomes available"""
+        """T084: Test wait_for_backend times out if backend never becomes available."""
         monitor = HealthMonitor()
 
         # Setup: Always fails
@@ -460,11 +456,11 @@ class TestWaitForBackend:
 
 
 class TestEdgeCases:
-    """Test edge cases and unusual scenarios"""
+    """Test edge cases and unusual scenarios."""
 
     @responses.activate
     def test_health_check_handles_both_backends_degraded(self):
-        """T085: Test health check handles both backends reporting "degraded" simultaneously"""
+        """T085: Test health check handles both backends reporting "degraded" simultaneously."""
         # Setup: Both backends degraded
         responses.add(
             responses.GET,
@@ -492,7 +488,7 @@ class TestEdgeCases:
 
     @responses.activate
     def test_health_check_handles_partial_recovery(self):
-        """T086: Test health check handles partial backend recovery (connected but degraded)"""
+        """T086: Test health check handles partial backend recovery (connected but degraded)."""
         # Setup: Go degraded (partial recovery from down state)
         responses.add(
             responses.GET,
@@ -511,7 +507,7 @@ class TestEdgeCases:
         assert monitor.is_backend_available("go") is True
 
     def test_health_check_completes_fast_when_port_closed(self):
-        """T087: Test health check completes within 1 second when backend port closed (fast failure)"""
+        """T087: Test health check completes within 1 second when backend port closed (fast failure)."""
         monitor = HealthMonitor()
 
         # Mock: Connection refused (port closed)
@@ -527,10 +523,10 @@ class TestEdgeCases:
 
 
 class TestSingletonInstance:
-    """Test global singleton health monitor"""
+    """Test global singleton health monitor."""
 
     def test_get_health_monitor_returns_singleton(self):
-        """Test get_health_monitor returns singleton instance"""
+        """Test get_health_monitor returns singleton instance."""
         # Test: Get monitor twice
         monitor1 = get_health_monitor()
         monitor2 = get_health_monitor()

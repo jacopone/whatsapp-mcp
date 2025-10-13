@@ -14,13 +14,11 @@ Usage:
 """
 
 # Import backend modules for package access
-from . import go_client
-from . import baileys_client
-from . import health
+from . import baileys_client, go_client, health
 
 # Export public API
 __all__ = [
-    "go_client",
     "baileys_client",
+    "go_client",
     "health",
 ]

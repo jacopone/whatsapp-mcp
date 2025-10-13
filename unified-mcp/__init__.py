@@ -22,8 +22,6 @@ Usage:
 __version__ = "0.1.0"
 
 # Package exports
-from . import backends
-from . import routing
-from . import sync
+from . import backends, routing, sync
 
-__all__ = ["backends", "routing", "sync", "__version__"]
+__all__ = ["__version__", "backends", "routing", "sync"]

@@ -35,13 +35,6 @@ packages = ["."]
 line-length = 100
 target-version = ["py312"]
 
-[tool.ruff]
-line-length = 100
-target-version = "py312"
-
-[tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP"]
-ignore = []
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -67,3 +60,88 @@ exclude_lines = [
     "raise NotImplementedError",
     "if __name__ == .__main__.:",
 ]
+
+# =============================================================================
+# Mypy Configuration (Static Type Checking)
+# =============================================================================
+# Enforces: FR-012, FR-013, FR-014, FR-015
+# Success Criteria: SC-007, SC-008, SC-009
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+
+# Strict mode flags (explicitly listed for clarity)
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_any_generics = true
+check_untyped_defs = true
+no_implicit_reexport = true
+warn_redundant_casts = true
+warn_unused_ignores = false  # Too many false positives with type: ignore
+warn_unreachable = true
+strict_equality = true
+disallow_untyped_decorators = false  # MCP decorators are untyped
+
+# Allow selective ignores for third-party libraries
+[[tool.mypy.overrides]]
+module = "fastmcp.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "mcp.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "requests.*"
+ignore_missing_imports = true
+no_implicit_reexport = false
+
+# =============================================================================
+# Ruff Configuration (Linting and Formatting)
+# =============================================================================
+# Enforces: FR-016 to FR-025
+# Success Criteria: SC-010, SC-011, SC-012, SC-013, SC-014, SC-015
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["."]
+
+[tool.ruff.lint]
+# Rule selection matches research.md decisions
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort (import sorting)
+    "N",   # pep8-naming
+    "W",   # pycodestyle warnings
+    "UP",  # pyupgrade (modern Python syntax)
+    "C90", # mccabe complexity (FR-020)
+    "D",   # pydocstyle (docstring rules, FR-021 to FR-025)
+    "RUF", # ruff-specific rules
+]
+
+# Ignore conflicting rules (see research.md)
+ignore = [
+    "D203", # one-blank-line-before-class (conflicts with D211)
+    "D213", # multi-line-summary-second-line (conflicts with D212)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["N999"]  # Allow module names with hyphens in __init__.py
+
+[tool.ruff.lint.mccabe]
+# Enforces: FR-020 (Complexity limit of 10)
+# Success Criteria: SC-012
+max-complexity = 10
+
+[tool.ruff.lint.pydocstyle]
+# Enforces: FR-021 to FR-025 (Google-style docstrings)
+# Success Criteria: SC-013, SC-014, SC-015
+convention = "google"
+
+[tool.ruff.lint.isort]
+# Package-aware import sorting (FR-003)
+known-first-party = ["unified_mcp"]

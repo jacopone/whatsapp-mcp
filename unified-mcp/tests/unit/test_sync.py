@@ -1,22 +1,23 @@
-"""
-Unit tests for sync.py - Database synchronization logic
+"""Unit tests for sync.py - Database synchronization logic.
 
 Tests batch processing, deduplication, error handling, and performance.
 Target: 75%+ coverage of sync.py (410 lines)
 """
+import time
+from unittest.mock import patch
+
 import pytest
 import responses
-import time
-from unittest.mock import Mock, patch, MagicMock
-from sync import DatabaseSyncService, SyncResult, sync_baileys_to_go, sync_all_chats
+
+from sync import DatabaseSyncService, SyncResult, sync_all_chats, sync_baileys_to_go
 
 
 class TestBatchSizes:
-    """Test sync with different batch sizes"""
+    """Test sync with different batch sizes."""
 
     @responses.activate
     def test_sync_with_zero_messages(self):
-        """T048: Test sync_messages with 0 messages (empty Baileys DB)"""
+        """T048: Test sync_messages with 0 messages (empty Baileys DB)."""
         # Setup: Baileys returns empty message list
         responses.add(
             responses.GET,
@@ -39,7 +40,7 @@ class TestBatchSizes:
 
     @responses.activate
     def test_sync_with_one_message(self):
-        """T049: Test sync_messages with 1 message"""
+        """T049: Test sync_messages with 1 message."""
         # Setup: Baileys returns 1 message
         responses.add(
             responses.GET,
@@ -77,7 +78,7 @@ class TestBatchSizes:
 
     @responses.activate
     def test_sync_with_100_messages(self):
-        """T050: Test sync_messages with 100 messages batch"""
+        """T050: Test sync_messages with 100 messages batch."""
         # Setup: Baileys returns 100 messages
         messages = [
             {
@@ -118,7 +119,7 @@ class TestBatchSizes:
 
     @responses.activate
     def test_sync_with_1000_messages(self):
-        """T051: Test sync_messages with 1000 messages batch"""
+        """T051: Test sync_messages with 1000 messages batch."""
         # Setup: Baileys returns 1000 messages
         messages = [
             {
@@ -158,7 +159,7 @@ class TestBatchSizes:
 
     @responses.activate
     def test_sync_with_10000_messages(self):
-        """T052: Test sync_messages with 10000 messages batch (large batch handling)"""
+        """T052: Test sync_messages with 10000 messages batch (large batch handling)."""
         # Setup: Baileys returns 10000 messages
         messages = [
             {
@@ -200,10 +201,10 @@ class TestBatchSizes:
 
 
 class TestDeduplication:
-    """Test message deduplication logic"""
+    """Test message deduplication logic."""
 
     def test_deduplication_identifies_existing_messages(self):
-        """T053: Test deduplication identifies existing messages by composite key"""
+        """T053: Test deduplication identifies existing messages by composite key."""
         sync_service = DatabaseSyncService()
 
         # Mock messages
@@ -223,7 +224,7 @@ class TestDeduplication:
         assert dup_count == 2
 
     def test_deduplication_handles_identical_timestamps_different_ids(self):
-        """T054: Test deduplication handles messages with identical timestamps but different IDs"""
+        """T054: Test deduplication handles messages with identical timestamps but different IDs."""
         sync_service = DatabaseSyncService()
 
         # Mock messages with same timestamp but different IDs
@@ -243,7 +244,7 @@ class TestDeduplication:
 
     @responses.activate
     def test_sync_with_partial_duplicates(self):
-        """T055: Test sync with 500 messages where 200 exist (deduplication removes 200)"""
+        """T055: Test sync with 500 messages where 200 exist (deduplication removes 200)."""
         # Setup: Baileys returns 500 messages
         messages = [
             {
@@ -286,11 +287,11 @@ class TestDeduplication:
 
 
 class TestBatchInsertion:
-    """Test batch insertion to Go database"""
+    """Test batch insertion to Go database."""
 
     @responses.activate
     def test_batch_insertion_succeeds(self):
-        """T056: Test batch insertion to Go database succeeds"""
+        """T056: Test batch insertion to Go database succeeds."""
         # Setup: Go DB accepts batch
         responses.add(
             responses.POST,
@@ -321,7 +322,7 @@ class TestBatchInsertion:
 
     @responses.activate
     def test_batch_insertion_partial_failure(self):
-        """T057: Test batch insertion failure midway reports partial success with accurate count"""
+        """T057: Test batch insertion failure midway reports partial success with accurate count."""
         # Setup: Go DB reports partial success
         responses.add(
             responses.POST,
@@ -343,11 +344,11 @@ class TestBatchInsertion:
 
 
 class TestNetworkErrors:
-    """Test network error handling"""
+    """Test network error handling."""
 
     @responses.activate
     def test_network_timeout_fetching_from_baileys(self):
-        """T058: Test network timeout fetching from Baileys fails gracefully without data corruption"""
+        """T058: Test network timeout fetching from Baileys fails gracefully without data corruption."""
         # Setup: Baileys times out
         responses.add(
             responses.GET,
@@ -368,10 +369,10 @@ class TestNetworkErrors:
 
 
 class TestCheckpoints:
-    """Test checkpoint management"""
+    """Test checkpoint management."""
 
     def test_checkpoint_update_after_successful_sync(self):
-        """T059: Test checkpoint update after successful sync contains correct message count"""
+        """T059: Test checkpoint update after successful sync contains correct message count."""
         sync_service = DatabaseSyncService()
 
         # Mock _update_checkpoint
@@ -383,7 +384,7 @@ class TestCheckpoints:
             mock_checkpoint.assert_called_once_with("test_chat@g.us", 150)
 
     def test_checkpoint_update_failure_logged(self):
-        """T060: Test checkpoint update failure is logged but doesn't block sync"""
+        """T060: Test checkpoint update failure is logged but doesn't block sync."""
         sync_service = DatabaseSyncService()
 
         # The method already handles exceptions gracefully (logs warning, doesn't raise)
@@ -396,10 +397,10 @@ class TestCheckpoints:
 
 
 class TestTempDBCleanup:
-    """Test Baileys temp DB cleanup"""
+    """Test Baileys temp DB cleanup."""
 
     def test_temp_db_clear_after_sync(self):
-        """T061: Test Baileys temp DB clearing after sync completion"""
+        """T061: Test Baileys temp DB clearing after sync completion."""
         sync_service = DatabaseSyncService()
 
         # Mock _clear_baileys_temp_db
@@ -410,7 +411,7 @@ class TestTempDBCleanup:
             mock_clear.assert_called_once()
 
     def test_temp_db_clear_failure_logged(self):
-        """T062: Test Baileys temp DB clear failure is logged but doesn't fail sync"""
+        """T062: Test Baileys temp DB clear failure is logged but doesn't fail sync."""
         sync_service = DatabaseSyncService()
 
         # The method already handles exceptions gracefully (logs warning, doesn't raise)
@@ -423,11 +424,11 @@ class TestTempDBCleanup:
 
 
 class TestPerformance:
-    """Test sync performance"""
+    """Test sync performance."""
 
     @responses.activate
     def test_sync_achieves_100_messages_per_second(self):
-        """T063: Test sync achieves 100+ messages/second throughput (performance validation)"""
+        """T063: Test sync achieves 100+ messages/second throughput (performance validation)."""
         # Setup: Baileys returns 1000 messages
         messages = [
             {
@@ -463,7 +464,7 @@ class TestPerformance:
         elapsed = time.time() - start_time
 
         # Verify: At least 100 msg/s throughput
-        throughput = result.messages_synced / result.elapsed_seconds if result.elapsed_seconds > 0 else 0
+        result.messages_synced / result.elapsed_seconds if result.elapsed_seconds > 0 else 0
         # Note: In unit tests with mocked HTTP, this will be very fast
         # In integration tests, this would validate actual network performance
         assert result.success is True
@@ -473,11 +474,11 @@ class TestPerformance:
 
 
 class TestSyncAllChats:
-    """Test sync_all_chats functionality"""
+    """Test sync_all_chats functionality."""
 
     @responses.activate
     def test_sync_all_chats_processes_multiple_chats(self):
-        """T064: Test sync_all_chats processes multiple chats sequentially"""
+        """T064: Test sync_all_chats processes multiple chats sequentially."""
         # Setup: Baileys returns 3 chats
         responses.add(
             responses.GET,
@@ -519,11 +520,11 @@ class TestSyncAllChats:
 
 
 class TestSyncResult:
-    """Test SyncResult dataclass"""
+    """Test SyncResult dataclass."""
 
     @responses.activate
     def test_sync_result_contains_accurate_metrics(self):
-        """T065: Test SyncResult contains accurate metrics (synced count, deduplicated count, elapsed time)"""
+        """T065: Test SyncResult contains accurate metrics (synced count, deduplicated count, elapsed time)."""
         # Setup: Simple sync scenario
         responses.add(
             responses.GET,
@@ -564,11 +565,11 @@ class TestSyncResult:
 
 
 class TestGoDatabaseErrors:
-    """Test Go database error handling"""
+    """Test Go database error handling."""
 
     @responses.activate
     def test_sync_handles_go_database_connection_error(self):
-        """T066: Test sync handles Go database connection error gracefully"""
+        """T066: Test sync handles Go database connection error gracefully."""
         # Setup: Baileys returns messages
         responses.add(
             responses.GET,
@@ -599,11 +600,11 @@ class TestGoDatabaseErrors:
 
 
 class TestConvenienceFunction:
-    """Test convenience wrapper function"""
+    """Test convenience wrapper function."""
 
     @responses.activate
     def test_sync_baileys_to_go_wrapper(self):
-        """Test sync_baileys_to_go convenience function works correctly"""
+        """Test sync_baileys_to_go convenience function works correctly."""
         # Setup: Simple sync scenario
         responses.add(
             responses.GET,

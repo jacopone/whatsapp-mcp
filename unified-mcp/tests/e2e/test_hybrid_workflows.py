@@ -1,22 +1,19 @@
-"""
-End-to-end tests for hybrid workflows (Phase 6: US4).
+"""End-to-end tests for hybrid workflows (Phase 6: US4).
 
 Tests the complete mark_community_as_read_with_history workflow
 that combines Baileys history sync + Go mark-as-read operations.
 """
 
-import pytest
-from unittest.mock import patch, Mock
-from typing import Dict, Any
+from unittest.mock import patch
 
 
 class TestMarkCommunityAsReadWithHistoryE2E:
-    """Test mark_community_as_read_with_history end-to-end workflow"""
+    """Test mark_community_as_read_with_history end-to-end workflow."""
 
     def test_mark_community_as_read_with_history_completes_end_to_end_with_500_messages(
         self, e2e_test_community, e2e_workflow_tracker
     ):
-        """T088: Test mark_community_as_read_with_history completes end-to-end with 500 messages"""
+        """T088: Test mark_community_as_read_with_history completes end-to-end with 500 messages."""
         from main import mark_community_as_read_with_history
 
         e2e_workflow_tracker.start_workflow()
@@ -83,7 +80,7 @@ class TestMarkCommunityAsReadWithHistoryE2E:
     def test_mark_community_as_read_with_history_respects_5_minute_timeout(
         self, e2e_test_community, e2e_workflow_tracker
     ):
-        """T089: Test mark_community_as_read_with_history respects 5-minute timeout (doesn't hang)"""
+        """T089: Test mark_community_as_read_with_history respects 5-minute timeout (doesn't hang)."""
         from main import mark_community_as_read_with_history
 
         e2e_workflow_tracker.start_workflow()
@@ -120,7 +117,7 @@ class TestMarkCommunityAsReadWithHistoryE2E:
     def test_mark_community_as_read_with_history_handles_baileys_history_sync_failure(
         self, e2e_test_community
     ):
-        """T090: Test mark_community_as_read_with_history handles Baileys history sync failure gracefully"""
+        """T090: Test mark_community_as_read_with_history handles Baileys history sync failure gracefully."""
         from main import mark_community_as_read_with_history
 
         with patch('main.backend_status') as mock_status, \
@@ -149,7 +146,7 @@ class TestMarkCommunityAsReadWithHistoryE2E:
     def test_mark_community_as_read_with_history_handles_go_mark_as_read_failure_after_sync(
         self, e2e_test_community
     ):
-        """T091: Test mark_community_as_read_with_history handles Go mark-as-read failure after sync"""
+        """T091: Test mark_community_as_read_with_history handles Go mark-as-read failure after sync."""
         from main import mark_community_as_read_with_history
 
         with patch('main.backend_status') as mock_status, \
@@ -198,9 +195,10 @@ class TestMarkCommunityAsReadWithHistoryE2E:
     def test_mark_community_as_read_with_history_reports_accurate_metrics(
         self, e2e_test_community
     ):
-        """T092: Test mark_community_as_read_with_history reports accurate metrics (synced count, groups processed, time)"""
-        from main import mark_community_as_read_with_history
+        """T092: Test mark_community_as_read_with_history reports accurate metrics (synced count, groups processed, time)."""
         import time
+
+        from main import mark_community_as_read_with_history
 
         with patch('main.backend_status') as mock_status, \
              patch('main.retrieve_full_history') as mock_history, \
@@ -263,10 +261,11 @@ class TestMarkCommunityAsReadWithHistoryE2E:
     def test_mark_community_as_read_with_history_concurrent_calls_for_different_communities(
         self, e2e_test_community
     ):
-        """T093: Test concurrent mark_community_as_read_with_history calls for different communities complete without race conditions"""
-        from main import mark_community_as_read_with_history
+        """T093: Test concurrent mark_community_as_read_with_history calls for different communities complete without race conditions."""
         import threading
         import time
+
+        from main import mark_community_as_read_with_history
 
         results = {}
         errors = {}
@@ -291,7 +290,7 @@ class TestMarkCommunityAsReadWithHistoryE2E:
             }
 
             def mark_side_effect(community_jid):
-                """Return different results based on community JID"""
+                """Return different results based on community JID."""
                 community_id = community_jid.split('@')[0][-1]
                 return {
                     "success": True,
@@ -303,7 +302,7 @@ class TestMarkCommunityAsReadWithHistoryE2E:
             mock_baileys.clear_temp_data.return_value = True
 
             def run_workflow(community_id: str, community_jid: str):
-                """Execute workflow for a community"""
+                """Execute workflow for a community."""
                 try:
                     # Small delay to ensure concurrent execution
                     time.sleep(0.01)
@@ -349,7 +348,7 @@ class TestMarkCommunityAsReadWithHistoryE2E:
     def test_mark_community_as_read_with_history_clears_baileys_temp_db_after_completion(
         self, e2e_test_community
     ):
-        """T094: Test mark_community_as_read_with_history clears Baileys temp DB after completion"""
+        """T094: Test mark_community_as_read_with_history clears Baileys temp DB after completion."""
         from main import mark_community_as_read_with_history
 
         with patch('main.backend_status') as mock_status, \
@@ -393,7 +392,7 @@ class TestMarkCommunityAsReadWithHistoryE2E:
     def test_mark_community_as_read_with_history_updates_checkpoints_correctly(
         self, e2e_test_community, integration_database
     ):
-        """T095: Test mark_community_as_read_with_history updates checkpoints correctly"""
+        """T095: Test mark_community_as_read_with_history updates checkpoints correctly."""
         from main import mark_community_as_read_with_history
 
         with patch('main.backend_status') as mock_status, \
