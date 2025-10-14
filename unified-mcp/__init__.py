@@ -22,6 +22,8 @@ Usage:
 __version__ = "0.1.0"
 
 # Package exports
-from . import backends, routing, sync
+# Note: Relative imports disabled due to directory naming (unified-mcp)
+# Tests import modules directly (e.g., from backends.health import ...)
+# from . import backends, routing, sync
 
-__all__ = ["__version__", "backends", "routing", "sync"]
+__all__ = ["__version__"]
