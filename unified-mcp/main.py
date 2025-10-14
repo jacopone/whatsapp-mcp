@@ -23,7 +23,24 @@ mcp: Any = FastMCP("whatsapp-unified")  # type: ignore[no-any-explicit]
 
 @mcp.tool()
 def backend_status() -> dict[str, Any]:
-    """Check health status of both Go and Baileys backends."""
+    """Check health status of both Go and Baileys backends.
+
+    Examples:
+        Check backend health:
+
+        >>> status = backend_status()  # doctest: +SKIP
+        >>> assert "go_bridge" in status  # doctest: +SKIP
+        >>> assert "baileys_bridge" in status  # doctest: +SKIP
+        >>> assert "overall_status" in status  # doctest: +SKIP
+        >>> print(f"System status: {status['overall_status']}")  # doctest: +SKIP
+
+        Monitor sync progress:
+
+        >>> status = backend_status()  # doctest: +SKIP
+        >>> if status["baileys_bridge"]["syncing"]:  # doctest: +SKIP
+        ...     progress = status["baileys_bridge"]["progress_percent"]  # doctest: +SKIP
+        ...     print(f"Sync progress: {progress}%")  # doctest: +SKIP
+    """
     from constants import BAILEYS_BRIDGE_URL, GO_BRIDGE_URL  # type: ignore[import-not-found]
 
     go_healthy = go_client.health_check()
@@ -655,6 +672,23 @@ def send_text_message_v2(chat_jid: str, text: str) -> dict[str, Any]:
 
     Returns:
         Dictionary with success status and message
+
+    Examples:
+        Send message to a contact:
+
+        >>> result = send_text_message_v2(  # doctest: +SKIP
+        ...     chat_jid="1234567890@s.whatsapp.net",
+        ...     text="Hello from MCP!"
+        ... )
+        >>> assert "success" in result  # doctest: +SKIP
+        >>> assert "message" in result  # doctest: +SKIP
+
+        Send message to a group:
+
+        >>> result = send_text_message_v2(  # doctest: +SKIP
+        ...     chat_jid="120363123456789@g.us",
+        ...     text="Team update: Meeting at 3pm"
+        ... )
     """
     success, message = go.send_text_message(chat_jid, text)
     return {"success": success, "message": message}
@@ -853,6 +887,21 @@ def mark_chat_read_v2(chat_jid: str) -> dict[str, Any]:
 
     Returns:
         Dictionary with success status, message, count, and optional error_code
+
+    Examples:
+        Mark all messages in a chat as read:
+
+        >>> result = mark_chat_read_v2("1234567890@s.whatsapp.net")  # doctest: +SKIP
+        >>> assert "success" in result  # doctest: +SKIP
+        >>> assert "count" in result  # doctest: +SKIP
+        >>> if result["success"]:  # doctest: +SKIP
+        ...     print(f"Marked {result['count']} messages as read")  # doctest: +SKIP
+
+        Handle empty chat (no messages to mark):
+
+        >>> result = mark_chat_read_v2("9876543210@s.whatsapp.net")  # doctest: +SKIP
+        >>> if result.get("error_code") == "EMPTY_CHAT":  # doctest: +SKIP
+        ...     print("Chat is empty")  # doctest: +SKIP
     """
     # Phase 3: T012 - Updated to handle new 4-value return (includes count and error_code)
     success, message, count, error_code = go_client.mark_as_read(chat_jid, [])
@@ -878,6 +927,20 @@ def list_chats_v2(limit: int = 20, archived: bool = False) -> dict[str, Any]:
 
     Returns:
         Dictionary with list of chats
+
+    Examples:
+        Get recent chats:
+
+        >>> result = list_chats_v2(limit=10)  # doctest: +SKIP
+        >>> assert result["success"] is True  # doctest: +SKIP
+        >>> assert len(result["chats"]) <= 10  # doctest: +SKIP
+        >>> for chat in result["chats"]:  # doctest: +SKIP
+        ...     assert "jid" in chat  # doctest: +SKIP
+
+        Include archived chats:
+
+        >>> result = list_chats_v2(limit=50, archived=True)  # doctest: +SKIP
+        >>> print(f"Total chats: {result['count']}")  # doctest: +SKIP
     """
     chats = go.list_chats(limit, archived)
     return {"success": True, "chats": chats, "count": len(chats)}
@@ -998,6 +1061,21 @@ def search_contacts_v2(query: str) -> dict[str, Any]:
 
     Returns:
         Dictionary with list of matching contacts
+
+    Examples:
+        Search contacts by name:
+
+        >>> result = search_contacts_v2("John")  # doctest: +SKIP
+        >>> assert result["success"] is True  # doctest: +SKIP
+        >>> assert "contacts" in result  # doctest: +SKIP
+        >>> assert "count" in result  # doctest: +SKIP
+        >>> for contact in result["contacts"]:  # doctest: +SKIP
+        ...     assert "jid" in contact  # doctest: +SKIP
+
+        Search by phone number:
+
+        >>> result = search_contacts_v2("555")  # doctest: +SKIP
+        >>> print(f"Found {result['count']} contacts")  # doctest: +SKIP
     """
     contacts = go.search_contacts_v2(query)
     return {"success": True, "contacts": contacts, "count": len(contacts)}

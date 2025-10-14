@@ -42,7 +42,7 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 asyncio_mode = "auto"
-addopts = "-v --strict-markers --timeout=10 --reruns 3 --reruns-delay 1"
+addopts = "-v --strict-markers --timeout=10 --reruns 3 --reruns-delay 1 --doctest-modules"
 
 [tool.coverage.run]
 branch = true

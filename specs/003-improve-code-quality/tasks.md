@@ -170,9 +170,9 @@
 
 ### Implementation for User Story 5
 
-- [ ] T076 [US5] Copy docstring style reference from `specs/003-improve-code-quality/contracts/docstring.example.py`
-- [ ] T077 [US5] Enable doctest in pytest config (add `--doctest-modules` to pyproject.toml [tool.pytest.ini_options])
-- [ ] T078 [US5] Run initial docstring check (`ruff check --select D unified-mcp/`)
+- [X] T076 [US5] Copy docstring style reference from `specs/003-improve-code-quality/contracts/docstring.example.py`
+- [X] T077 [US5] Enable doctest in pytest config (add `--doctest-modules` to pyproject.toml [tool.pytest.ini_options])
+- [X] T078 [US5] Run initial docstring check (`ruff check --select D unified-mcp/`)
 - [ ] T079 [US5] Add module docstring to `unified-mcp/__init__.py`
 - [ ] T080 [P] [US5] Add module docstring to `unified-mcp/main.py`
 - [ ] T081 [P] [US5] Add module docstring to `unified-mcp/constants.py`
