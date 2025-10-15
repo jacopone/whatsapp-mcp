@@ -535,7 +535,7 @@ whatsapp-mcp/
 
 ## Contributing
 
-See [docs/CONTRIBUTING.md](./docs/CONTRIBUTING.md) for documentation contribution guidelines.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for documentation contribution guidelines and Git workflow best practices.
 
 ## Security & Privacy
 

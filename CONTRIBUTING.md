@@ -221,16 +221,68 @@ else:
 
 **Local setup**:
 ```bash
-# Clone repository
-git clone https://github.com/lharries/whatsapp-mcp.git
+# Fork the repository on GitHub first, then clone your fork
+git clone https://github.com/YOUR_USERNAME/whatsapp-mcp.git
 cd whatsapp-mcp
 
-# Create feature branch
-git checkout -b docs/your-improvement-name
+# Add upstream remote (original repository)
+git remote add upstream https://github.com/lharries/whatsapp-mcp.git
+
+# Fetch upstream changes
+git fetch upstream
+
+# Create feature branch from develop (for active development)
+git checkout develop
+git checkout -b feature/your-improvement-name
 
 # Make your changes
 # Edit the relevant markdown files
 ```
+
+**Git Workflow** (for forks):
+
+We use a three-branch workflow for organized development:
+
+```
+feature branches → develop (integration) → main (PR-ready) → upstream PR
+```
+
+- **`develop`** - Active integration branch where all feature work is merged
+- **`main`** - Clean, PR-ready branch that tracks upstream/main
+- **`feature/*`** - Feature branches created from develop
+
+**Workflow steps**:
+
+```bash
+# 1. Work on your feature branch
+git checkout -b feature/your-feature develop
+# ... make changes ...
+git add .
+git commit -m "feat: your feature description"
+
+# 2. Merge into develop (integration testing)
+git checkout develop
+git merge feature/your-feature
+git push origin develop
+
+# 3. When ready for PR to upstream, merge develop into main
+git checkout main
+git merge develop
+git push origin main
+
+# 4. Create PR from your fork's main to upstream/main
+# (Use GitHub web interface to create PR)
+
+# 5. Clean up feature branches after merging
+git branch -d feature/your-feature
+git push origin --delete feature/your-feature
+```
+
+**Why this workflow?**
+- Keep `develop` as active workspace with all WIP features
+- Keep `main` clean and synced with upstream (easier to merge PRs)
+- Test feature integration in `develop` before promoting to `main`
+- Easy to stay up-to-date with upstream changes
 
 **Preview changes**:
 ```bash
@@ -258,14 +310,37 @@ grep -r "](.*\.md)" *.md docs/*.md
 
 ### 4. Submitting
 
-**Create pull request**:
+**Create pull request** (following the three-branch workflow):
 ```bash
-# Commit your changes
+# Stage and commit your changes on feature branch
 git add .
 git commit -m "docs: improve [section name] documentation"
 
-# Push to your fork
-git push origin docs/your-improvement-name
+# Push feature branch to your fork
+git push origin feature/your-improvement-name
+
+# Merge into develop for integration
+git checkout develop
+git merge feature/your-improvement-name
+git push origin develop
+
+# When ready for upstream PR, merge develop into main
+git checkout main
+git merge develop
+git push origin main
+
+# Create PR on GitHub: your-fork/main → lharries/main
+```
+
+**Alternative** (for quick documentation fixes):
+```bash
+# For small doc fixes, you can work directly on main
+git checkout main
+git add .
+git commit -m "docs: fix typo in API reference"
+git push origin main
+
+# Then create PR: your-fork/main → lharries/main
 ```
 
 **PR description should include**:
@@ -289,6 +364,8 @@ git push origin docs/your-improvement-name
 - [ ] Links verified
 - [ ] Formatting checked
 - [ ] Spell check passed
+
+**Branch**: Merged from develop (or main for quick fixes)
 
 **Related Issues**: #123 (if applicable)
 ```
