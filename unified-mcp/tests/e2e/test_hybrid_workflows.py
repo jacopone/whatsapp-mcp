@@ -215,7 +215,7 @@ class TestMarkCommunityAsReadWithHistoryE2E:
             mock_sync.return_value = {
                 "success": True,
                 "messages_added": 200,
-                "messages_skipped": 50
+                "messages_deduplicated": 50
             }
             mock_mark.return_value = {
                 "success": True,
@@ -249,7 +249,7 @@ class TestMarkCommunityAsReadWithHistoryE2E:
         # Check database sync metrics
         db_step = next(s for s in result["steps"] if s["step"] == "database_sync")
         assert "200 new messages" in db_step["status"]
-        assert "50 already existed" in db_step["status"]
+        assert "50 deduplicated" in db_step["status"]
 
         # Check mark as read metrics
         assert result["mark_as_read_details"]["groups_processed"] == 3
