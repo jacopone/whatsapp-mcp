@@ -274,8 +274,19 @@ def mock_time(monkeypatch):
     return mock
 
 
-# Note: Removed autouse reset_responses fixture
-# The @responses.activate decorator already handles all lifecycle:
-# - start() on entry
-# - stop() + reset() on exit
-# Having an autouse fixture interferes with pytest-rerunfailures retries
+@pytest.fixture(autouse=True)
+def reset_responses():
+    """Clean up responses state after each test.
+
+    Critical: Only reset() in teardown, not in setup.
+    This ensures cleanup between tests without interfering with
+    @responses.activate's setup phase or pytest-rerunfailures retries.
+
+    Note: @responses.activate handles start/stop but NOT reset,
+    so we need to clean up registered mocks between tests.
+    """
+    # No setup actions - let @responses.activate handle startup
+    yield
+
+    # Teardown: Clean up registered mocks after test completes
+    responses.reset()
