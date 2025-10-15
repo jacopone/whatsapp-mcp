@@ -61,12 +61,9 @@ jobs:
           name: python-${{ matrix.python-version }}
           fail_ci_if_error: false  # FR-029: Don't block on Codecov failure
 
-      - name: Check coverage threshold (FR-008)
-        if: matrix.python-version == '3.12'  # Only check once
-        working-directory: ./unified-mcp
-        run: |
-          # Fail if overall coverage drops below 70% (configured in pyproject.toml)
-          pytest tests/ --cov --cov-report=term
+      # Note: Coverage threshold (70%) is already enforced in first pytest run
+      # via pyproject.toml [tool.coverage.report] fail_under = 70
+      # No need for separate coverage check step (causes test state pollution)
 
   # ====================
   # Code Quality Checks
