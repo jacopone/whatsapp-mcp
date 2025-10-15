@@ -43,7 +43,7 @@ export function registerBusinessRoutes(
     try {
       // Request business catalog from WhatsApp
       // Note: Baileys has better support for business catalog operations
-      const catalog = await sock.getBusinessProfile(jid);
+      const catalog = await sock.getBusinessProfile(jid) as any;
 
       if (!catalog) {
         return res.json({
@@ -93,7 +93,7 @@ export function registerBusinessRoutes(
 
     try {
       // First get the catalog
-      const catalog = await sock.getBusinessProfile(jid);
+      const catalog = await sock.getBusinessProfile(jid) as any;
 
       if (!catalog || !catalog.products) {
         return res.status(404).json({

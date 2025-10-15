@@ -3,6 +3,7 @@
 Monitors the health of both Go/whatsmeow and Baileys bridges,
 providing detailed status information and availability tracking.
 """
+
 import logging
 import time
 from dataclasses import dataclass, field
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class BackendHealth:
     """Health status for a single backend."""
+
     backend: str
     status: str  # "ok", "degraded", "error", "unreachable"
     whatsapp_connected: bool
@@ -34,6 +36,7 @@ class BackendHealth:
 @dataclass
 class OverallHealth:
     """Overall health status for all backends."""
+
     status: str  # "ok", "degraded", "error"
     primary_backend: str  # "go" or "baileys"
     go_backend: BackendHealth | None
@@ -71,10 +74,7 @@ class HealthMonitor:
         start_time = time.time()
 
         try:
-            response = requests.get(
-                f"{GO_BRIDGE_URL}/health",
-                timeout=timeout
-            )
+            response = requests.get(f"{GO_BRIDGE_URL}/health", timeout=timeout)
 
             response_time = (time.time() - start_time) * 1000  # Convert to ms
 
@@ -89,7 +89,7 @@ class HealthMonitor:
                     uptime_seconds=data.get("uptime_seconds", 0),
                     last_check=datetime.now(),
                     response_time_ms=response_time,
-                    details=data.get("details", {})
+                    details=data.get("details", {}),
                 )
 
                 self.go_failure_count = 0  # Reset failure count on success
@@ -106,7 +106,7 @@ class HealthMonitor:
                     uptime_seconds=0,
                     last_check=datetime.now(),
                     response_time_ms=response_time,
-                    error_message=f"HTTP {response.status_code}"
+                    error_message=f"HTTP {response.status_code}",
                 )
                 self.go_failure_count += 1
                 return health
@@ -122,7 +122,7 @@ class HealthMonitor:
                 uptime_seconds=0,
                 last_check=datetime.now(),
                 response_time_ms=(time.time() - start_time) * 1000,
-                error_message="Health check timeout"
+                error_message="Health check timeout",
             )
 
         except requests.exceptions.ConnectionError:
@@ -136,7 +136,7 @@ class HealthMonitor:
                 uptime_seconds=0,
                 last_check=datetime.now(),
                 response_time_ms=0,
-                error_message="Connection refused"
+                error_message="Connection refused",
             )
 
         except Exception as e:
@@ -150,7 +150,7 @@ class HealthMonitor:
                 uptime_seconds=0,
                 last_check=datetime.now(),
                 response_time_ms=0,
-                error_message=str(e)
+                error_message=str(e),
             )
 
     def check_baileys_health(self, timeout: int = HEALTH_CHECK_TIMEOUT) -> BackendHealth:
@@ -165,10 +165,7 @@ class HealthMonitor:
         start_time = time.time()
 
         try:
-            response = requests.get(
-                f"{BAILEYS_BRIDGE_URL}/health",
-                timeout=timeout
-            )
+            response = requests.get(f"{BAILEYS_BRIDGE_URL}/health", timeout=timeout)
 
             response_time = (time.time() - start_time) * 1000  # Convert to ms
 
@@ -184,7 +181,7 @@ class HealthMonitor:
                     uptime_seconds=int(data.get("uptime_seconds", data.get("uptime", 0))),
                     last_check=datetime.now(),
                     response_time_ms=response_time,
-                    details=data.get("details", {})
+                    details=data.get("details", {}),
                 )
 
                 self.baileys_failure_count = 0  # Reset failure count on success
@@ -201,7 +198,7 @@ class HealthMonitor:
                     uptime_seconds=0,
                     last_check=datetime.now(),
                     response_time_ms=response_time,
-                    error_message=f"HTTP {response.status_code}"
+                    error_message=f"HTTP {response.status_code}",
                 )
                 self.baileys_failure_count += 1
                 return health
@@ -217,7 +214,7 @@ class HealthMonitor:
                 uptime_seconds=0,
                 last_check=datetime.now(),
                 response_time_ms=(time.time() - start_time) * 1000,
-                error_message="Health check timeout"
+                error_message="Health check timeout",
             )
 
         except requests.exceptions.ConnectionError:
@@ -231,7 +228,7 @@ class HealthMonitor:
                 uptime_seconds=0,
                 last_check=datetime.now(),
                 response_time_ms=0,
-                error_message="Connection refused"
+                error_message="Connection refused",
             )
 
         except Exception as e:
@@ -245,7 +242,7 @@ class HealthMonitor:
                 uptime_seconds=0,
                 last_check=datetime.now(),
                 response_time_ms=0,
-                error_message=str(e)
+                error_message=str(e),
             )
 
     def check_all(self) -> OverallHealth:
@@ -265,8 +262,10 @@ class HealthMonitor:
             available_backends.append("baileys")
 
         # Determine primary backend (prefer Go if both available)
-        primary_backend = "go" if "go" in available_backends else (
-            "baileys" if "baileys" in available_backends else "none"
+        primary_backend = (
+            "go"
+            if "go" in available_backends
+            else ("baileys" if "baileys" in available_backends else "none")
         )
 
         # Determine overall status
@@ -283,7 +282,7 @@ class HealthMonitor:
             go_backend=go_health,
             baileys_backend=baileys_health,
             last_check=datetime.now(),
-            available_backends=available_backends
+            available_backends=available_backends,
         )
 
     def is_backend_available(self, backend: str) -> bool:
@@ -355,16 +354,20 @@ class HealthMonitor:
                     "status": overall.go_backend.status,
                     "whatsapp_connected": overall.go_backend.whatsapp_connected,
                     "response_time_ms": overall.go_backend.response_time_ms,
-                    "error": overall.go_backend.error_message
-                } if overall.go_backend else None,
+                    "error": overall.go_backend.error_message,
+                }
+                if overall.go_backend
+                else None,
                 "baileys": {
                     "status": overall.baileys_backend.status,
                     "whatsapp_connected": overall.baileys_backend.whatsapp_connected,
                     "response_time_ms": overall.baileys_backend.response_time_ms,
-                    "error": overall.baileys_backend.error_message
-                } if overall.baileys_backend else None
+                    "error": overall.baileys_backend.error_message,
+                }
+                if overall.baileys_backend
+                else None,
             },
-            "last_check": overall.last_check.isoformat()
+            "last_check": overall.last_check.isoformat(),
         }
 
 

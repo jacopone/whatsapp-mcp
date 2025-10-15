@@ -3,6 +3,7 @@
 Tests routing strategies, backend selection, failover, and error handling.
 Target: 80%+ coverage of routing.py (341 lines)
 """
+
 import pytest
 
 from routing import OperationType, Router, RoutingStrategy
@@ -142,7 +143,9 @@ class TestRoutingStrategies:
         assert backend3 in ["go", "baileys"], "Should select a backend"
 
         # Verify alternation pattern
-        assert backend1 != backend2 or len({"go", "baileys"}) == 1, "Should alternate between backends"
+        assert backend1 != backend2 or len({"go", "baileys"}) == 1, (
+            "Should alternate between backends"
+        )
 
     def test_round_robin_counter_increments(self, mock_health_monitor):
         """T034: Test ROUND_ROBIN counter increments correctly."""
@@ -256,9 +259,7 @@ class TestRouteFallback:
 
         # Test: route_with_fallback should try go, then baileys
         success, result = router.route_with_fallback(
-            OperationType.SEND_MESSAGE,
-            go_func,
-            baileys_func
+            OperationType.SEND_MESSAGE, go_func, baileys_func
         )
 
         # Verify: Both backends were attempted
@@ -285,9 +286,7 @@ class TestRouteFallback:
 
         # Test: route_with_fallback should try both and return failure
         success, result = router.route_with_fallback(
-            OperationType.SEND_MESSAGE,
-            go_func,
-            baileys_func
+            OperationType.SEND_MESSAGE, go_func, baileys_func
         )
 
         # Verify: Both failed, so overall failure
@@ -298,24 +297,29 @@ class TestRouteFallback:
 class TestOperationHandling:
     """Test handling of different operation types."""
 
-    @pytest.mark.parametrize("operation,expected_strategy", [
-        (OperationType.SEND_MESSAGE, RoutingStrategy.PREFER_GO),
-        (OperationType.SEND_FILE, RoutingStrategy.PREFER_GO),
-        (OperationType.SEND_AUDIO, RoutingStrategy.PREFER_GO),
-        (OperationType.MARK_AS_READ, RoutingStrategy.PREFER_GO),
-        (OperationType.DOWNLOAD_MEDIA, RoutingStrategy.PREFER_GO),
-        (OperationType.SYNC_FULL_HISTORY, RoutingStrategy.PREFER_BAILEYS),
-        (OperationType.SYNC_CHAT_HISTORY, RoutingStrategy.PREFER_GO),
-        (OperationType.LIST_COMMUNITIES, RoutingStrategy.PREFER_GO),
-        (OperationType.GET_COMMUNITY_GROUPS, RoutingStrategy.PREFER_GO),
-        (OperationType.MARK_COMMUNITY_AS_READ, RoutingStrategy.PREFER_GO),
-        (OperationType.SEARCH_CONTACTS, RoutingStrategy.PREFER_GO),
-        (OperationType.LIST_CONTACTS, RoutingStrategy.PREFER_GO),
-        (OperationType.LIST_CHATS, RoutingStrategy.PREFER_GO),
-        (OperationType.GET_CHAT, RoutingStrategy.PREFER_GO),
-        (OperationType.LIST_MESSAGES, RoutingStrategy.PREFER_GO),
-    ])
-    def test_routing_handles_all_operation_types(self, mock_health_monitor, operation, expected_strategy):
+    @pytest.mark.parametrize(
+        "operation,expected_strategy",
+        [
+            (OperationType.SEND_MESSAGE, RoutingStrategy.PREFER_GO),
+            (OperationType.SEND_FILE, RoutingStrategy.PREFER_GO),
+            (OperationType.SEND_AUDIO, RoutingStrategy.PREFER_GO),
+            (OperationType.MARK_AS_READ, RoutingStrategy.PREFER_GO),
+            (OperationType.DOWNLOAD_MEDIA, RoutingStrategy.PREFER_GO),
+            (OperationType.SYNC_FULL_HISTORY, RoutingStrategy.PREFER_BAILEYS),
+            (OperationType.SYNC_CHAT_HISTORY, RoutingStrategy.PREFER_GO),
+            (OperationType.LIST_COMMUNITIES, RoutingStrategy.PREFER_GO),
+            (OperationType.GET_COMMUNITY_GROUPS, RoutingStrategy.PREFER_GO),
+            (OperationType.MARK_COMMUNITY_AS_READ, RoutingStrategy.PREFER_GO),
+            (OperationType.SEARCH_CONTACTS, RoutingStrategy.PREFER_GO),
+            (OperationType.LIST_CONTACTS, RoutingStrategy.PREFER_GO),
+            (OperationType.LIST_CHATS, RoutingStrategy.PREFER_GO),
+            (OperationType.GET_CHAT, RoutingStrategy.PREFER_GO),
+            (OperationType.LIST_MESSAGES, RoutingStrategy.PREFER_GO),
+        ],
+    )
+    def test_routing_handles_all_operation_types(
+        self, mock_health_monitor, operation, expected_strategy
+    ):
         """T039: Test routing handles all 15+ operation types correctly (parametrized)."""
         # Setup: Both backends healthy
         mock_health_monitor.set_go_health("ok", response_time_ms=100.0)
@@ -326,8 +330,9 @@ class TestOperationHandling:
 
         # Verify: Operation has correct strategy
         actual_strategy = router.operation_strategies[operation]
-        assert actual_strategy == expected_strategy, \
+        assert actual_strategy == expected_strategy, (
             f"{operation.value} should have strategy {expected_strategy.value}"
+        )
 
         # Verify: Backend selection works
         backend = router.select_backend(operation)
@@ -396,7 +401,9 @@ class TestRoutingInfo:
         assert info["backend_health"]["go"] is not None, "Go health should be present"
         assert info["backend_health"]["baileys"] is not None, "Baileys health should be present"
         assert info["backend_health"]["go"]["status"] == "ok", "Go should be healthy"
-        assert info["backend_health"]["go"]["response_time_ms"] == 100.0, "Go response time should match"
+        assert info["backend_health"]["go"]["response_time_ms"] == 100.0, (
+            "Go response time should match"
+        )
 
     def test_is_operation_available_indicates_backend_availability(self, mock_health_monitor):
         """T043: Test is_operation_available correctly indicates backend availability."""
@@ -408,20 +415,23 @@ class TestRoutingInfo:
         router = Router(health_monitor=mock_health_monitor)
 
         # Test: PREFER_GO operation should be available
-        assert router.is_operation_available(OperationType.SEND_MESSAGE) is True, \
+        assert router.is_operation_available(OperationType.SEND_MESSAGE) is True, (
             "SEND_MESSAGE should be available (Go is up)"
+        )
 
         # Test: PREFER_BAILEYS operation should also be available (fallback to Go)
-        assert router.is_operation_available(OperationType.SYNC_FULL_HISTORY) is True, \
+        assert router.is_operation_available(OperationType.SYNC_FULL_HISTORY) is True, (
             "SYNC_FULL_HISTORY should be available (fallback to Go)"
+        )
 
         # Setup: Both backends down
         mock_health_monitor.set_go_health("error", response_time_ms=0.0)
         mock_health_monitor.set_baileys_health("error", response_time_ms=0.0)
 
         # Test: No operations should be available
-        assert router.is_operation_available(OperationType.SEND_MESSAGE) is False, \
+        assert router.is_operation_available(OperationType.SEND_MESSAGE) is False, (
             "SEND_MESSAGE should not be available (both backends down)"
+        )
 
 
 class TestErrorHandling:
@@ -447,7 +457,7 @@ class TestErrorHandling:
             OperationType.SEND_MESSAGE,
             test_func,
             test_func,
-            required_backend="go"  # Valid backend for normal path
+            required_backend="go",  # Valid backend for normal path
         )
 
         # This test verifies the error handling path in route_call
@@ -471,18 +481,15 @@ class TestErrorHandling:
 
         # Test: route_call should log error when no backend available
         with caplog.at_level(logging.ERROR):
-            success, result = router.route_call(
-                OperationType.SEND_MESSAGE,
-                test_func,
-                test_func
-            )
+            success, result = router.route_call(OperationType.SEND_MESSAGE, test_func, test_func)
 
         # Verify: Error was logged
         assert success is False, "Should fail when no backends available"
         assert "No backend available" in result, "Result should indicate no backend"
         # Check logs contain error message
-        assert any("No backend available" in record.message for record in caplog.records), \
+        assert any("No backend available" in record.message for record in caplog.records), (
             "Should log error when no backends available"
+        )
 
     def test_routing_with_degraded_backend(self, mock_health_monitor):
         """T046: Test routing with degraded backend (partial availability)."""

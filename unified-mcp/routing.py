@@ -3,6 +3,7 @@
 Routes requests to the appropriate backend (Go/whatsmeow or Baileys)
 based on availability, health status, and operation requirements.
 """
+
 import logging
 from collections.abc import Callable
 from enum import Enum
@@ -17,6 +18,7 @@ Backend = Literal["go", "baileys"]
 
 class OperationType(Enum):
     """Types of operations that can be routed."""
+
     # Message operations
     SEND_MESSAGE = "send_message"
     SEND_FILE = "send_file"
@@ -45,11 +47,12 @@ class OperationType(Enum):
 
 class RoutingStrategy(Enum):
     """Routing strategies for different operation types."""
-    PRIMARY_ONLY = "primary_only"      # Use primary backend only
-    PREFER_GO = "prefer_go"            # Prefer Go, fallback to Baileys
+
+    PRIMARY_ONLY = "primary_only"  # Use primary backend only
+    PREFER_GO = "prefer_go"  # Prefer Go, fallback to Baileys
     PREFER_BAILEYS = "prefer_baileys"  # Prefer Baileys, fallback to Go
-    ROUND_ROBIN = "round_robin"        # Alternate between backends
-    FASTEST = "fastest"                # Use backend with lowest response time
+    ROUND_ROBIN = "round_robin"  # Alternate between backends
+    FASTEST = "fastest"  # Use backend with lowest response time
 
 
 class Router:
@@ -72,16 +75,13 @@ class Router:
             OperationType.SEND_AUDIO: RoutingStrategy.PREFER_GO,
             OperationType.MARK_AS_READ: RoutingStrategy.PREFER_GO,
             OperationType.DOWNLOAD_MEDIA: RoutingStrategy.PREFER_GO,
-
             # History sync operations - require specific backend
             OperationType.SYNC_FULL_HISTORY: RoutingStrategy.PREFER_BAILEYS,  # Baileys has syncFullHistory
             OperationType.SYNC_CHAT_HISTORY: RoutingStrategy.PREFER_GO,
-
             # Community operations - prefer Go
             OperationType.LIST_COMMUNITIES: RoutingStrategy.PREFER_GO,
             OperationType.GET_COMMUNITY_GROUPS: RoutingStrategy.PREFER_GO,
             OperationType.MARK_COMMUNITY_AS_READ: RoutingStrategy.PREFER_GO,
-
             # Contact/chat operations - can use either, prefer Go
             OperationType.SEARCH_CONTACTS: RoutingStrategy.PREFER_GO,
             OperationType.LIST_CONTACTS: RoutingStrategy.PREFER_GO,
@@ -107,7 +107,9 @@ class Router:
         if preferred in available:
             return preferred
         elif fallback in available:
-            logger.info(f"{preferred.capitalize()} backend unavailable for {operation_name}, using {fallback.capitalize()}")
+            logger.info(
+                f"{preferred.capitalize()} backend unavailable for {operation_name}, using {fallback.capitalize()}"
+            )
             return fallback
         return None
 
@@ -137,9 +139,7 @@ class Router:
         return None
 
     def select_backend(
-        self,
-        operation: OperationType,
-        required_backend: Backend | None = None
+        self, operation: OperationType, required_backend: Backend | None = None
     ) -> Backend | None:
         """Select the best backend for the given operation.
 
@@ -171,10 +171,14 @@ class Router:
             return primary if primary != "none" else None
 
         if strategy == RoutingStrategy.PREFER_GO:
-            return self._select_with_preference("go", "baileys", available_backends, operation.value)
+            return self._select_with_preference(
+                "go", "baileys", available_backends, operation.value
+            )
 
         if strategy == RoutingStrategy.PREFER_BAILEYS:
-            return self._select_with_preference("baileys", "go", available_backends, operation.value)
+            return self._select_with_preference(
+                "baileys", "go", available_backends, operation.value
+            )
 
         if strategy == RoutingStrategy.ROUND_ROBIN:
             if not available_backends:
@@ -190,7 +194,9 @@ class Router:
             if fastest:
                 return fastest
             # Fallback to prefer_go logic
-            return self._select_with_preference("go", "baileys", available_backends, operation.value)
+            return self._select_with_preference(
+                "go", "baileys", available_backends, operation.value
+            )
 
         return None
 
@@ -201,7 +207,7 @@ class Router:
         baileys_func: Callable[..., Any] | None = None,
         required_backend: Backend | None = None,
         *args,
-        **kwargs
+        **kwargs,
     ) -> tuple[bool, Any]:
         """Route a function call to the appropriate backend.
 
@@ -250,7 +256,7 @@ class Router:
         go_func: Callable[..., Any],
         baileys_func: Callable[..., Any] | None = None,
         *args,
-        **kwargs
+        **kwargs,
     ) -> tuple[bool, Any]:
         """Route a call with automatic fallback to other backend if primary fails.
 
@@ -333,19 +339,22 @@ class Router:
             "primary_backend": overall_health.primary_backend,
             "available_backends": overall_health.available_backends,
             "routing_strategies": {
-                op.value: strategy.value
-                for op, strategy in self.operation_strategies.items()
+                op.value: strategy.value for op, strategy in self.operation_strategies.items()
             },
             "backend_health": {
                 "go": {
                     "status": overall_health.go_backend.status,
-                    "response_time_ms": overall_health.go_backend.response_time_ms
-                } if overall_health.go_backend else None,
+                    "response_time_ms": overall_health.go_backend.response_time_ms,
+                }
+                if overall_health.go_backend
+                else None,
                 "baileys": {
                     "status": overall_health.baileys_backend.status,
-                    "response_time_ms": overall_health.baileys_backend.response_time_ms
-                } if overall_health.baileys_backend else None
-            }
+                    "response_time_ms": overall_health.baileys_backend.response_time_ms,
+                }
+                if overall_health.baileys_backend
+                else None,
+            },
         }
 
 

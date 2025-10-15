@@ -25,7 +25,7 @@ class TestConcurrentMessageOperations:
             """Simulate sending a message."""
             try:
                 # Mock the operation
-                with patch('backends.health.requests.get') as mock_health:
+                with patch("backends.health.requests.get") as mock_health:
                     # Both backends healthy
                     mock_response = Mock()
                     mock_response.status_code = 200
@@ -33,7 +33,7 @@ class TestConcurrentMessageOperations:
                         "status": "ok",
                         "whatsapp_connected": True,
                         "database_ok": True,
-                        "uptime_seconds": 3600
+                        "uptime_seconds": 3600,
                     }
                     mock_health.return_value = mock_response
 
@@ -67,7 +67,9 @@ class TestConcurrentMessageOperations:
 class TestConcurrentSyncOperations:
     """Test concurrent database sync operations."""
 
-    def test_5_concurrent_database_sync_operations_for_different_chats_complete_without_deadlocks(self):
+    def test_5_concurrent_database_sync_operations_for_different_chats_complete_without_deadlocks(
+        self,
+    ):
         """T107: Test 5 concurrent database sync operations for different chats complete without deadlocks."""
         from sync import DatabaseSyncService
 
@@ -79,10 +81,11 @@ class TestConcurrentSyncOperations:
             """Simulate syncing a chat."""
             try:
                 # Mock the sync operation
-                with patch.object(sync_service, '_fetch_baileys_messages', return_value=[]), \
-                     patch.object(sync_service, '_deduplicate_messages', return_value=([], 0)), \
-                     patch.object(sync_service, '_insert_to_go_db', return_value=0):
-
+                with (
+                    patch.object(sync_service, "_fetch_baileys_messages", return_value=[]),
+                    patch.object(sync_service, "_deduplicate_messages", return_value=([], 0)),
+                    patch.object(sync_service, "_insert_to_go_db", return_value=0),
+                ):
                     result = sync_service.sync_messages(chat_jid)
                     results.append({"chat_jid": chat_jid, "synced": result.messages_synced})
             except Exception as e:
@@ -109,7 +112,9 @@ class TestConcurrentSyncOperations:
         assert len(results) == 5, f"Expected 5 results, got {len(results)}"
         assert elapsed < 10.0, f"Operations took {elapsed:.2f}s, may indicate deadlock"
 
-    def test_concurrent_sync_operations_for_same_chat_handle_overlapping_correctly_no_duplicates(self):
+    def test_concurrent_sync_operations_for_same_chat_handle_overlapping_correctly_no_duplicates(
+        self,
+    ):
         """T111: Test concurrent sync operations for same chat handle overlapping correctly (no duplicates)."""
         from sync import DatabaseSyncService
 
@@ -127,14 +132,14 @@ class TestConcurrentSyncOperations:
             try:
                 # Mock messages with unique IDs per thread
                 messages = [
-                    {"id": f"msg-{thread_id}-{i}", "content": f"Message {i}"}
-                    for i in range(10)
+                    {"id": f"msg-{thread_id}-{i}", "content": f"Message {i}"} for i in range(10)
                 ]
 
-                with patch.object(sync_service, '_fetch_baileys_messages', return_value=messages), \
-                     patch.object(sync_service, '_deduplicate_messages', return_value=(messages, 0)), \
-                     patch.object(sync_service, '_insert_to_go_db', return_value=len(messages)):
-
+                with (
+                    patch.object(sync_service, "_fetch_baileys_messages", return_value=messages),
+                    patch.object(sync_service, "_deduplicate_messages", return_value=(messages, 0)),
+                    patch.object(sync_service, "_insert_to_go_db", return_value=len(messages)),
+                ):
                     result = sync_service.sync_messages(chat_jid)
 
                     with lock:
@@ -159,8 +164,9 @@ class TestConcurrentSyncOperations:
         # Verify: No duplicates (each message ID should appear only once)
         assert len(errors) == 0, f"Errors occurred: {errors}"
         assert len(results) == 3
-        assert len(all_message_ids) == len(set(all_message_ids)), \
+        assert len(all_message_ids) == len(set(all_message_ids)), (
             f"Duplicate message IDs detected: {len(all_message_ids)} total, {len(set(all_message_ids))} unique"
+        )
 
 
 class TestConcurrentHealthChecks:
@@ -177,7 +183,7 @@ class TestConcurrentHealthChecks:
         def check_health(check_id: int):
             """Perform health check."""
             try:
-                with patch('backends.health.requests.get') as mock_get:
+                with patch("backends.health.requests.get") as mock_get:
                     # Mock healthy response
                     mock_response = Mock()
                     mock_response.status_code = 200
@@ -185,7 +191,7 @@ class TestConcurrentHealthChecks:
                         "status": "ok",
                         "whatsapp_connected": True,
                         "database_ok": True,
-                        "uptime_seconds": 3600
+                        "uptime_seconds": 3600,
                     }
                     mock_get.return_value = mock_response
 
@@ -218,7 +224,9 @@ class TestConcurrentHealthChecks:
 class TestConcurrentFailoverOperations:
     """Test concurrent route_with_fallback operations."""
 
-    def test_concurrent_route_with_fallback_calls_handle_failover_correctly_without_race_conditions(self):
+    def test_concurrent_route_with_fallback_calls_handle_failover_correctly_without_race_conditions(
+        self,
+    ):
         """T109: Test concurrent route_with_fallback calls handle failover correctly without race conditions."""
         from routing import OperationType, get_router
 
@@ -229,7 +237,7 @@ class TestConcurrentFailoverOperations:
         def route_operation(op_id: int):
             """Route operation with potential fallback."""
             try:
-                with patch('backends.health.requests.get') as mock_get:
+                with patch("backends.health.requests.get") as mock_get:
                     # Mock Go fails, Baileys succeeds
                     def mock_get_side_effect(url, **kwargs):
                         mock_response = Mock()
@@ -238,7 +246,7 @@ class TestConcurrentFailoverOperations:
                             "status": "ok",
                             "whatsapp_connected": True,
                             "database_ok": True,
-                            "uptime_seconds": 3600
+                            "uptime_seconds": 3600,
                         }
 
                         if "8080" in url:  # Go bridge - fails
@@ -335,7 +343,9 @@ class TestMixedConcurrentOperations:
 class TestThreadBarrierSynchronization:
     """Test concurrent operations with barrier synchronization."""
 
-    def test_concurrent_operations_with_thread_barrier_synchronization_all_start_simultaneously(self):
+    def test_concurrent_operations_with_thread_barrier_synchronization_all_start_simultaneously(
+        self,
+    ):
         """T112: Test concurrent operations with thread barrier synchronization (all start simultaneously)."""
         num_threads = 10
         barrier = threading.Barrier(num_threads)
@@ -430,7 +440,9 @@ class TestRaceConditionDetection:
             thread.join()
 
         # Verify: Counter should be exactly 50 (no race conditions)
-        assert shared_counter == 50, f"Race condition detected in safe operations: counter={shared_counter}"
+        assert shared_counter == 50, (
+            f"Race condition detected in safe operations: counter={shared_counter}"
+        )
 
         # Test 2: Detect that our detector works (race_conditions_detected should be > 0 for unsafe operations)
         shared_counter = 0

@@ -5,6 +5,7 @@ Combines Go/whatsmeow and Baileys bridges for maximum functionality:
 - Baileys: History sync
 - Hybrid: Smart combination of both
 """
+
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP  # type: ignore[import]
@@ -20,6 +21,7 @@ mcp: Any = FastMCP("whatsapp-unified")  # type: ignore[no-any-explicit]
 # ============================================================================
 # BACKEND STATUS & HEALTH CHECKS
 # ============================================================================
+
 
 @mcp.tool()
 def backend_status() -> dict[str, Any]:
@@ -48,30 +50,30 @@ def backend_status() -> dict[str, Any]:
     baileys_status = baileys_client.get_sync_status()
 
     return {
-        "go_bridge": {
-            "healthy": go_healthy,
-            "url": GO_BRIDGE_URL
-        },
+        "go_bridge": {"healthy": go_healthy, "url": GO_BRIDGE_URL},
         "baileys_bridge": {
             "healthy": baileys_healthy,
             "url": BAILEYS_BRIDGE_URL,
             "connected": baileys_status.get("connected", False),
             "syncing": baileys_status.get("is_syncing", False),
             "messages_synced": baileys_status.get("messages_synced", 0),
-            "progress_percent": baileys_status.get("progress_percent", 0)
+            "progress_percent": baileys_status.get("progress_percent", 0),
         },
-        "overall_status": "healthy" if (go_healthy and baileys_healthy) else "degraded"
+        "overall_status": "healthy" if (go_healthy and baileys_healthy) else "degraded",
     }
+
 
 # ============================================================================
 # PASS-THROUGH TOOLS (All existing functionality via Go)
 # ============================================================================
+
 
 @mcp.tool()
 def search_contacts(query: str) -> list[dict[str, Any]]:
     """Search WhatsApp contacts by name or phone number."""
     # TODO: Implement search_contacts in go_client
     return []
+
 
 @mcp.tool()
 def list_messages(
@@ -84,11 +86,12 @@ def list_messages(
     page: int = 0,
     include_context: bool = True,
     context_before: int = 1,
-    context_after: int = 1
+    context_after: int = 1,
 ) -> list[dict[str, Any]]:
     """Get WhatsApp messages matching specified criteria with optional context."""
     # TODO: Implement list_messages functionality
     return []
+
 
 @mcp.tool()
 def list_chats(
@@ -96,11 +99,12 @@ def list_chats(
     limit: int = 20,
     page: int = 0,
     include_last_message: bool = True,
-    sort_by: str = "last_active"
+    sort_by: str = "last_active",
 ) -> list[dict[str, Any]]:
     """Get WhatsApp chats matching specified criteria."""
     # TODO: Implement list_chats functionality
     return []
+
 
 @mcp.tool()
 def get_chat(chat_jid: str, include_last_message: bool = True) -> dict[str, Any]:
@@ -108,11 +112,13 @@ def get_chat(chat_jid: str, include_last_message: bool = True) -> dict[str, Any]
     # TODO: Implement get_chat functionality
     return {}
 
+
 @mcp.tool()
 def get_direct_chat_by_contact(sender_phone_number: str) -> dict[str, Any]:
     """Get WhatsApp chat metadata by sender phone number."""
     # TODO: Implement get_direct_chat_by_contact functionality
     return {}
+
 
 @mcp.tool()
 def get_contact_chats(jid: str, limit: int = 20, page: int = 0) -> list[dict[str, Any]]:
@@ -120,11 +126,13 @@ def get_contact_chats(jid: str, limit: int = 20, page: int = 0) -> list[dict[str
     # TODO: Implement get_contact_chats functionality
     return []
 
+
 @mcp.tool()
 def get_last_interaction(jid: str) -> str:
     """Get most recent WhatsApp message involving the contact."""
     # TODO: Implement get_last_interaction functionality
     return ""
+
 
 @mcp.tool()
 def get_message_context(message_id: str, before: int = 5, after: int = 5) -> dict[str, Any]:
@@ -132,11 +140,13 @@ def get_message_context(message_id: str, before: int = 5, after: int = 5) -> dic
     # TODO: Implement get_message_context functionality
     return {}
 
+
 @mcp.tool()
 def send_message(recipient: str, message: str) -> dict[str, Any]:
     """Send a WhatsApp message to a person or group."""
     success, status_message = go_client.send_message(recipient, message)
     return {"success": success, "message": status_message}
+
 
 @mcp.tool()
 def send_file(recipient: str, media_path: str) -> dict[str, Any]:
@@ -144,11 +154,13 @@ def send_file(recipient: str, media_path: str) -> dict[str, Any]:
     success, status_message = go_client.send_file(recipient, media_path)
     return {"success": success, "message": status_message}
 
+
 @mcp.tool()
 def send_audio_message(recipient: str, media_path: str) -> dict[str, Any]:
     """Send an audio message via WhatsApp."""
     # TODO: Implement send_audio_message in go_client
     return {"success": False, "message": "Not implemented"}
+
 
 @mcp.tool()
 def download_media(message_id: str, chat_jid: str) -> dict[str, Any]:
@@ -159,21 +171,33 @@ def download_media(message_id: str, chat_jid: str) -> dict[str, Any]:
     else:
         return {"success": False, "message": "Failed to download media"}
 
-@mcp.tool()
-def mark_as_read(chat_jid: str, message_ids: list[str], sender: str | None = None) -> dict[str, Any]:
-    """Mark WhatsApp messages as read."""
-    success, status_message, count, error_code = go_client.mark_as_read(chat_jid, message_ids, sender)
-    return {"success": success, "message": status_message, "count": count, "error_code": error_code}
 
 @mcp.tool()
-def list_communities(query: str | None = None, limit: int = 20, page: int = 0) -> list[dict[str, Any]]:
+def mark_as_read(
+    chat_jid: str, message_ids: list[str], sender: str | None = None
+) -> dict[str, Any]:
+    """Mark WhatsApp messages as read."""
+    success, status_message, count, error_code = go_client.mark_as_read(
+        chat_jid, message_ids, sender
+    )
+    return {"success": success, "message": status_message, "count": count, "error_code": error_code}
+
+
+@mcp.tool()
+def list_communities(
+    query: str | None = None, limit: int = 20, page: int = 0
+) -> list[dict[str, Any]]:
     """Get all WhatsApp Communities."""
     return go_client.list_communities(query, limit)
 
+
 @mcp.tool()
-def get_community_groups(community_jid: str, limit: int = 100, page: int = 0) -> list[dict[str, Any]]:
+def get_community_groups(
+    community_jid: str, limit: int = 100, page: int = 0
+) -> list[dict[str, Any]]:
     """Get all groups belonging to a specific WhatsApp Community."""
     return go_client.get_community_groups(community_jid, limit)
+
 
 @mcp.tool()
 def mark_community_as_read(community_jid: str) -> dict[str, Any]:
@@ -185,9 +209,11 @@ def mark_community_as_read(community_jid: str) -> dict[str, Any]:
     # TODO: Implement mark_community_as_read in go_client
     return {"success": False, "message": "Not implemented", "details": {}}
 
+
 # ============================================================================
 # NEW HYBRID TOOLS (Combining Go + Baileys)
 # ============================================================================
+
 
 @mcp.tool()
 def retrieve_full_history(wait_for_completion: bool = True, timeout: int = 300) -> dict[str, Any]:
@@ -210,16 +236,12 @@ def retrieve_full_history(wait_for_completion: bool = True, timeout: int = 300) 
         return {
             "success": False,
             "message": "Baileys bridge not connected to WhatsApp. Please scan QR code first.",
-            "status": status
+            "status": status,
         }
 
     # If already syncing, just return status
     if status.get("is_syncing"):
-        return {
-            "success": True,
-            "message": "History sync already in progress",
-            "status": status
-        }
+        return {"success": True, "message": "History sync already in progress", "status": status}
 
     # If already completed, return that info
     if status.get("is_latest") and not status.get("is_syncing"):
@@ -227,7 +249,7 @@ def retrieve_full_history(wait_for_completion: bool = True, timeout: int = 300) 
         return {
             "success": True,
             "message": f"History sync already complete. {messages_count} messages available.",
-            "status": status
+            "status": status,
         }
 
     # Wait for sync if requested
@@ -240,20 +262,21 @@ def retrieve_full_history(wait_for_completion: bool = True, timeout: int = 300) 
             return {
                 "success": True,
                 "message": f"History sync complete! {final_status.get('messages_synced', 0)} messages synced.",
-                "status": final_status
+                "status": final_status,
             }
         else:
             return {
                 "success": False,
                 "message": "History sync timed out or failed",
-                "status": baileys_client.get_sync_status()
+                "status": baileys_client.get_sync_status(),
             }
     else:
         return {
             "success": True,
             "message": "History sync in progress. Check status with backend_status()",
-            "status": status
+            "status": status,
         }
+
 
 @mcp.tool()
 def sync_history_to_database() -> dict[str, Any]:
@@ -289,14 +312,15 @@ def sync_history_to_database() -> dict[str, Any]:
         "messages_deduplicated": total_deduplicated,
         "chats_synced": total_chats,
         "chats_failed": failed_chats,
-        "message": f"Synced {total_synced} messages from {total_chats} chats ({failed_chats} failed)" if success
-                   else f"Partial sync: {total_synced} messages from {total_chats - failed_chats}/{total_chats} chats"
+        "message": f"Synced {total_synced} messages from {total_chats} chats ({failed_chats} failed)"
+        if success
+        else f"Partial sync: {total_synced} messages from {total_chats - failed_chats}/{total_chats} chats",
     }
+
 
 @mcp.tool()
 def mark_community_as_read_with_history(
-    community_jid: str,
-    sync_timeout: int = 300
+    community_jid: str, sync_timeout: int = 300
 ) -> dict[str, Any]:
     """THE ULTIMATE HYBRID TOOL: Retrieve history + mark community messages as read.
 
@@ -315,10 +339,7 @@ def mark_community_as_read_with_history(
     Returns:
         Complete results from history sync + mark as read operation
     """
-    result = {
-        "community_jid": community_jid,
-        "steps": []
-    }
+    result = {"community_jid": community_jid, "steps": []}
 
     # Step 1: Check backends health
     print("1️⃣ Checking backend health...")
@@ -327,7 +348,7 @@ def mark_community_as_read_with_history(
         return {
             "success": False,
             "message": "One or more backends are not healthy",
-            "backend_status": status
+            "backend_status": status,
         }
     result["steps"].append({"step": "health_check", "status": "✅ Both backends healthy"})
 
@@ -338,11 +359,15 @@ def mark_community_as_read_with_history(
     if not history_result["success"]:
         result["success"] = False
         result["message"] = f"History sync failed: {history_result['message']}"
-        result["steps"].append({"step": "history_sync", "status": f"❌ {history_result['message']}"})
+        result["steps"].append(
+            {"step": "history_sync", "status": f"❌ {history_result['message']}"}
+        )
         return result
 
     messages_synced = history_result["status"].get("messages_synced", 0)
-    result["steps"].append({"step": "history_sync", "status": f"✅ {messages_synced} messages retrieved"})
+    result["steps"].append(
+        {"step": "history_sync", "status": f"✅ {messages_synced} messages retrieved"}
+    )
 
     # Step 3: Sync Baileys → Go database
     print("3️⃣ Syncing messages to Go database...")
@@ -356,19 +381,23 @@ def mark_community_as_read_with_history(
 
     messages_added = sync_result.get("messages_added", 0)
     messages_deduplicated = sync_result.get("messages_deduplicated", 0)
-    result["steps"].append({
-        "step": "database_sync",
-        "status": f"✅ {messages_added} new messages, {messages_deduplicated} deduplicated"
-    })
+    result["steps"].append(
+        {
+            "step": "database_sync",
+            "status": f"✅ {messages_added} new messages, {messages_deduplicated} deduplicated",
+        }
+    )
 
     # Step 4: Mark community as read via Go
     print("4️⃣ Marking all community messages as read...")
     mark_result = mark_community_as_read(community_jid)
 
-    result["steps"].append({
-        "step": "mark_as_read",
-        "status": f"{'✅' if mark_result['success'] else '❌'} {mark_result['message']}"
-    })
+    result["steps"].append(
+        {
+            "step": "mark_as_read",
+            "status": f"{'✅' if mark_result['success'] else '❌'} {mark_result['message']}",
+        }
+    )
     result["mark_as_read_details"] = mark_result.get("details", {})
 
     # Step 5: Clean up Baileys temp data
@@ -380,20 +409,20 @@ def mark_community_as_read_with_history(
 
     # Final result
     result["success"] = mark_result["success"]
-    result["message"] = f"✅ Complete! History synced and community marked as read. {mark_result['message']}"
+    result["message"] = (
+        f"✅ Complete! History synced and community marked as read. {mark_result['message']}"
+    )
 
     return result
+
 
 # ============================================================================
 # HISTORY SYNC TOOLS (User Story 1.1 - T023)
 # ============================================================================
 
+
 @mcp.tool()
-def fetch_history(
-    chat_jid: str,
-    resume: bool = False,
-    max_messages: int = 1000
-) -> dict[str, Any]:
+def fetch_history(chat_jid: str, resume: bool = False, max_messages: int = 1000) -> dict[str, Any]:
     """Start or resume history sync for a specific chat via Baileys.
 
     Args:
@@ -406,22 +435,17 @@ def fetch_history(
     """
     try:
         import requests
+
         response = requests.post(
             f"{baileys_client.BAILEYS_BRIDGE_URL}/history/sync",
-            json={
-                "chat_jid": chat_jid,
-                "resume": resume,
-                "max_messages": max_messages
-            },
-            timeout=SHORT_TIMEOUT
+            json={"chat_jid": chat_jid, "resume": resume, "max_messages": max_messages},
+            timeout=SHORT_TIMEOUT,
         )
         response.raise_for_status()
         return response.json()
     except Exception as e:
-        return {
-            "success": False,
-            "error": f"Failed to start history sync: {e!s}"
-        }
+        return {"success": False, "error": f"Failed to start history sync: {e!s}"}
+
 
 @mcp.tool()
 def get_sync_status(chat_jid: str) -> dict[str, Any]:
@@ -435,16 +459,16 @@ def get_sync_status(chat_jid: str) -> dict[str, Any]:
     """
     try:
         import requests
+
         response = requests.get(
             f"{baileys_client.BAILEYS_BRIDGE_URL}/history/sync/{chat_jid}/status",
-            timeout=HEALTH_CHECK_TIMEOUT
+            timeout=HEALTH_CHECK_TIMEOUT,
         )
         response.raise_for_status()
         return response.json()
     except Exception as e:
-        return {
-            "error": f"Failed to get sync status: {e!s}"
-        }
+        return {"error": f"Failed to get sync status: {e!s}"}
+
 
 @mcp.tool()
 def cancel_sync(chat_jid: str) -> dict[str, Any]:
@@ -458,17 +482,16 @@ def cancel_sync(chat_jid: str) -> dict[str, Any]:
     """
     try:
         import requests
+
         response = requests.post(
             f"{baileys_client.BAILEYS_BRIDGE_URL}/history/sync/{chat_jid}/cancel",
-            timeout=HEALTH_CHECK_TIMEOUT
+            timeout=HEALTH_CHECK_TIMEOUT,
         )
         response.raise_for_status()
         return response.json()
     except Exception as e:
-        return {
-            "success": False,
-            "error": f"Failed to cancel sync: {e!s}"
-        }
+        return {"success": False, "error": f"Failed to cancel sync: {e!s}"}
+
 
 @mcp.tool()
 def resume_sync(chat_jid: str, max_messages: int = 1000) -> dict[str, Any]:
@@ -483,18 +506,17 @@ def resume_sync(chat_jid: str, max_messages: int = 1000) -> dict[str, Any]:
     """
     try:
         import requests
+
         response = requests.post(
             f"{baileys_client.BAILEYS_BRIDGE_URL}/history/sync/{chat_jid}/resume",
             json={"max_messages": max_messages},
-            timeout=SHORT_TIMEOUT
+            timeout=SHORT_TIMEOUT,
         )
         response.raise_for_status()
         return response.json()
     except Exception as e:
-        return {
-            "success": False,
-            "error": f"Failed to resume sync: {e!s}"
-        }
+        return {"success": False, "error": f"Failed to resume sync: {e!s}"}
+
 
 @mcp.tool()
 def get_sync_checkpoints() -> dict[str, Any]:
@@ -508,12 +530,11 @@ def get_sync_checkpoints() -> dict[str, Any]:
         # For now, return placeholder
         return {
             "checkpoints": [],
-            "message": "Checkpoint query endpoint not yet implemented in Go bridge (T024)"
+            "message": "Checkpoint query endpoint not yet implemented in Go bridge (T024)",
         }
     except Exception as e:
-        return {
-            "error": f"Failed to get checkpoints: {e!s}"
-        }
+        return {"error": f"Failed to get checkpoints: {e!s}"}
+
 
 @mcp.tool()
 def clear_temp_storage() -> dict[str, Any]:
@@ -529,17 +550,16 @@ def clear_temp_storage() -> dict[str, Any]:
         # For now, return placeholder
         return {
             "success": True,
-            "message": "Temp storage clear endpoint not yet implemented in Baileys bridge"
+            "message": "Temp storage clear endpoint not yet implemented in Baileys bridge",
         }
     except Exception as e:
-        return {
-            "success": False,
-            "error": f"Failed to clear temp storage: {e!s}"
-        }
+        return {"success": False, "error": f"Failed to clear temp storage: {e!s}"}
+
 
 # ============================================================================
 # MESSAGE QUERY TOOLS (User Story 1.2 - T025)
 # ============================================================================
+
 
 @mcp.tool()
 def query_synced_messages(
@@ -551,7 +571,7 @@ def query_synced_messages(
     limit: int = 100,
     offset: int = 0,
     include_media: bool = False,
-    media_type: str | None = None
+    media_type: str | None = None,
 ) -> dict[str, Any]:
     """Query synced messages from Go database with various filters.
 
@@ -600,7 +620,7 @@ def query_synced_messages(
         limit=limit,
         offset=offset,
         include_media=include_media,
-        media_type=media_type
+        media_type=media_type,
     )
 
 
@@ -644,10 +664,12 @@ def get_message_statistics() -> dict[str, Any]:
 # BAILEYS-SPECIFIC TOOLS
 # ============================================================================
 
+
 @mcp.tool()
 def get_baileys_sync_status() -> dict[str, Any]:
     """Get current Baileys history sync status."""
     return baileys_client.get_sync_status()
+
 
 @mcp.tool()
 def clear_baileys_temp_data() -> dict[str, Any]:
@@ -655,12 +677,14 @@ def clear_baileys_temp_data() -> dict[str, Any]:
     success = baileys_client.clear_temp_data()
     return {
         "success": success,
-        "message": "Temp data cleared" if success else "Failed to clear temp data"
+        "message": "Temp data cleared" if success else "Failed to clear temp data",
     }
+
 
 # ============================================================================
 # T043: MESSAGING MCP TOOLS (15 tools routing to Go bridge)
 # ============================================================================
+
 
 @mcp.tool()
 def send_text_message_v2(chat_jid: str, text: str) -> dict[str, Any]:
@@ -696,10 +720,7 @@ def send_text_message_v2(chat_jid: str, text: str) -> dict[str, Any]:
 
 @mcp.tool()
 def send_media_message_v2(
-    chat_jid: str,
-    media_path: str,
-    media_type: str,
-    caption: str | None = None
+    chat_jid: str, media_path: str, media_type: str, caption: str | None = None
 ) -> dict[str, Any]:
     """Send a media message (image, video, audio, document) via Go bridge.
 
@@ -963,6 +984,7 @@ def get_chat_metadata_v2(chat_jid: str) -> dict[str, Any]:
 # T044: CHAT MANAGEMENT MCP TOOLS (6 tools routing to Go bridge)
 # ============================================================================
 
+
 @mcp.tool()
 def archive_chat(chat_jid: str) -> dict[str, Any]:
     """Archive a WhatsApp chat via Go bridge.
@@ -1051,6 +1073,7 @@ def unmute_chat(chat_jid: str) -> dict[str, Any]:
 # ============================================================================
 # T045: CONTACT MCP TOOLS (8 tools routing to Go bridge)
 # ============================================================================
+
 
 @mcp.tool()
 def search_contacts_v2(query: str) -> dict[str, Any]:
@@ -1175,6 +1198,7 @@ def get_linked_devices_v2() -> dict[str, Any]:
 # T049: PRIVACY MCP TOOLS (8 tools routing to Go bridge)
 # ============================================================================
 
+
 @mcp.tool()
 def block_contact(jid: str | None = None, phone: str | None = None) -> dict[str, Any]:
     """Block a WhatsApp contact via Go bridge.
@@ -1285,6 +1309,7 @@ def update_online_privacy(value: str) -> dict[str, Any]:
 # T053: BUSINESS MCP TOOLS (3 tools routing to Go/Baileys bridges)
 # ============================================================================
 
+
 @mcp.tool()
 def get_business_profile(jid: str) -> dict[str, Any]:
     """Get business profile information via Go bridge.
@@ -1309,6 +1334,7 @@ def get_business_catalog(jid: str) -> dict[str, Any]:
         Dictionary with catalog information and product count
     """
     import backends.baileys_client as baileys
+
     return baileys.get_business_catalog(jid)
 
 
@@ -1324,12 +1350,14 @@ def get_product_details(jid: str, product_id: str) -> dict[str, Any]:
         Dictionary with product details (name, description, price, images, availability)
     """
     import backends.baileys_client as baileys
+
     return baileys.get_product_details(jid, product_id)
 
 
 # ============================================================================
 # T055: NEWSLETTER MCP TOOLS (5 tools routing to Go bridge)
 # ============================================================================
+
 
 @mcp.tool()
 def subscribe_to_newsletter(jid: str) -> dict[str, Any]:
@@ -1427,4 +1455,4 @@ if __name__ == "__main__":
     print("\n")
 
     # Run the server
-    mcp.run(transport='stdio')
+    mcp.run(transport="stdio")

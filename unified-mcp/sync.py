@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class SyncResult:
     """Result of a sync operation."""
+
     success: bool
     messages_synced: int
     messages_deduplicated: int
@@ -45,7 +46,7 @@ class DatabaseSyncService:
         baileys_url: str = BAILEYS_BRIDGE_URL,
         go_url: str = GO_BRIDGE_URL,
         batch_size: int = 1000,
-        request_timeout: int = DEFAULT_TIMEOUT
+        request_timeout: int = DEFAULT_TIMEOUT,
     ):
         """Initialize sync service.
 
@@ -86,21 +87,18 @@ class DatabaseSyncService:
                     success=True,
                     messages_synced=0,
                     messages_deduplicated=0,
-                    elapsed_seconds=time.time() - start_time
+                    elapsed_seconds=time.time() - start_time,
                 )
 
             logger.info(f"Fetched {len(messages)} messages from Baileys temp DB")
 
             # Step 2: Deduplicate messages
             logger.debug("Deduplicating messages")
-            deduplicated_messages, dedup_count = self._deduplicate_messages(
-                chat_jid, messages
-            )
+            deduplicated_messages, dedup_count = self._deduplicate_messages(chat_jid, messages)
             total_deduplicated = dedup_count
 
             logger.info(
-                f"Deduplicated {dedup_count} messages, "
-                f"{len(deduplicated_messages)} remaining"
+                f"Deduplicated {dedup_count} messages, {len(deduplicated_messages)} remaining"
             )
 
             if not deduplicated_messages:
@@ -111,7 +109,7 @@ class DatabaseSyncService:
                     success=True,
                     messages_synced=0,
                     messages_deduplicated=total_deduplicated,
-                    elapsed_seconds=time.time() - start_time
+                    elapsed_seconds=time.time() - start_time,
                 )
 
             # Step 3: Batch insert to Go DB
@@ -142,10 +140,7 @@ class DatabaseSyncService:
                 messages_synced=total_synced,
                 messages_deduplicated=total_deduplicated,
                 elapsed_seconds=elapsed,
-                details={
-                    "chat_jid": chat_jid,
-                    "throughput_per_second": throughput
-                }
+                details={"chat_jid": chat_jid, "throughput_per_second": throughput},
             )
 
         except Exception as e:
@@ -157,14 +152,10 @@ class DatabaseSyncService:
                 messages_synced=total_synced,
                 messages_deduplicated=total_deduplicated,
                 elapsed_seconds=elapsed,
-                error_message=str(e)
+                error_message=str(e),
             )
 
-    def _fetch_baileys_messages(
-        self,
-        chat_jid: str,
-        limit: int
-    ) -> list[dict[str, Any]]:
+    def _fetch_baileys_messages(self, chat_jid: str, limit: int) -> list[dict[str, Any]]:
         """Fetch messages from Baileys temp database.
 
         Args:
@@ -181,7 +172,7 @@ class DatabaseSyncService:
             response = requests.get(
                 f"{self.baileys_url}/history/messages",
                 params={"chat_jid": chat_jid, "limit": limit},
-                timeout=self.request_timeout
+                timeout=self.request_timeout,
             )
             response.raise_for_status()
 
@@ -193,9 +184,7 @@ class DatabaseSyncService:
             raise
 
     def _deduplicate_messages(
-        self,
-        chat_jid: str,
-        messages: list[dict[str, Any]]
+        self, chat_jid: str, messages: list[dict[str, Any]]
     ) -> tuple[list[dict[str, Any]], int]:
         """Deduplicate messages by checking against Go DB.
 
@@ -220,10 +209,7 @@ class DatabaseSyncService:
             existing_ids = self._get_existing_message_ids(chat_jid, message_ids)
 
             # Filter out duplicates
-            deduplicated = [
-                msg for msg in messages
-                if msg["id"] not in existing_ids
-            ]
+            deduplicated = [msg for msg in messages if msg["id"] not in existing_ids]
 
             duplicate_count = len(messages) - len(deduplicated)
 
@@ -234,11 +220,7 @@ class DatabaseSyncService:
             # On error, return all messages (safer to have duplicates than miss messages)
             return messages, 0
 
-    def _get_existing_message_ids(
-        self,
-        chat_jid: str,
-        message_ids: list[str]
-    ) -> set[str]:
+    def _get_existing_message_ids(self, chat_jid: str, message_ids: list[str]) -> set[str]:
         """Query Go DB for existing message IDs.
 
         Args:
@@ -258,11 +240,7 @@ class DatabaseSyncService:
         # TODO: Implement actual duplicate checking endpoint in Go bridge
         return set()
 
-    def _insert_to_go_db(
-        self,
-        chat_jid: str,
-        messages: list[dict[str, Any]]
-    ) -> int:
+    def _insert_to_go_db(self, chat_jid: str, messages: list[dict[str, Any]]) -> int:
         """Batch insert messages to Go database.
 
         Args:
@@ -289,7 +267,7 @@ class DatabaseSyncService:
                     "content": msg.get("content"),
                     "timestamp": msg["timestamp"],
                     "is_from_me": msg.get("is_from_me", False),
-                    "sync_source": "baileys"
+                    "sync_source": "baileys",
                 }
                 for msg in messages
             ]
@@ -299,7 +277,7 @@ class DatabaseSyncService:
             response = requests.post(
                 f"{self.go_url}/messages/batch",
                 json={"messages": go_messages},
-                timeout=self.request_timeout
+                timeout=self.request_timeout,
             )
             response.raise_for_status()
 
@@ -370,10 +348,7 @@ def sync_all_chats() -> dict[str, SyncResult]:
 
     try:
         # Get list of chats from Baileys temp DB
-        response = requests.get(
-            f"{BAILEYS_BRIDGE_URL}/chats/list",
-            timeout=DEFAULT_TIMEOUT
-        )
+        response = requests.get(f"{BAILEYS_BRIDGE_URL}/chats/list", timeout=DEFAULT_TIMEOUT)
         response.raise_for_status()
 
         chats = response.json().get("chats", [])

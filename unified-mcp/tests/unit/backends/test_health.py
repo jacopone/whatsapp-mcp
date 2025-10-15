@@ -3,6 +3,7 @@
 Tests health check scenarios, status aggregation, and failover logic.
 Target: 75%+ coverage of backends/health.py (391 lines)
 """
+
 import time
 from unittest.mock import Mock, patch
 
@@ -27,9 +28,9 @@ class TestGoHealthChecks:
                 "whatsapp_connected": True,
                 "database_ok": True,
                 "uptime_seconds": 3600,
-                "details": {"version": "1.0.0"}
+                "details": {"version": "1.0.0"},
             },
-            status=200
+            status=200,
         )
 
         monitor = HealthMonitor()
@@ -51,7 +52,10 @@ class TestGoHealthChecks:
         monitor = HealthMonitor()
 
         # Mock requests.get to raise Timeout
-        with patch('backends.health.requests.get', side_effect=requests.exceptions.Timeout("Connection timeout")):
+        with patch(
+            "backends.health.requests.get",
+            side_effect=requests.exceptions.Timeout("Connection timeout"),
+        ):
             # Test: Check health with timeout
             health = monitor.check_go_health(timeout=1)
 
@@ -67,7 +71,10 @@ class TestGoHealthChecks:
         monitor = HealthMonitor()
 
         # Mock requests.get to raise ConnectionError
-        with patch('backends.health.requests.get', side_effect=requests.exceptions.ConnectionError("Connection refused")):
+        with patch(
+            "backends.health.requests.get",
+            side_effect=requests.exceptions.ConnectionError("Connection refused"),
+        ):
             # Test: Check health when connection refused
             health = monitor.check_go_health()
 
@@ -86,7 +93,7 @@ class TestGoHealthChecks:
             responses.GET,
             f"{GO_BRIDGE_URL}/health",
             json={"error": "Internal server error"},
-            status=500
+            status=500,
         )
 
         monitor = HealthMonitor()
@@ -112,9 +119,9 @@ class TestGoHealthChecks:
                 "status": "ok",
                 "whatsapp_connected": True,
                 "database_ok": True,
-                "uptime_seconds": 1800
+                "uptime_seconds": 1800,
             },
-            status=200
+            status=200,
         )
 
         monitor = HealthMonitor()
@@ -139,13 +146,8 @@ class TestBaileysHealthChecks:
         responses.add(
             responses.GET,
             f"{BAILEYS_BRIDGE_URL}/health",
-            json={
-                "status": "ok",
-                "connected": True,
-                "uptime": 7200,
-                "details": {"sessions": 1}
-            },
-            status=200
+            json={"status": "ok", "connected": True, "uptime": 7200, "details": {"sessions": 1}},
+            status=200,
         )
 
         monitor = HealthMonitor()
@@ -166,7 +168,10 @@ class TestBaileysHealthChecks:
         monitor = HealthMonitor()
 
         # Mock requests.get to raise Timeout
-        with patch('backends.health.requests.get', side_effect=requests.exceptions.Timeout("Connection timeout")):
+        with patch(
+            "backends.health.requests.get",
+            side_effect=requests.exceptions.Timeout("Connection timeout"),
+        ):
             # Test: Check health with timeout
             health = monitor.check_baileys_health(timeout=1)
 
@@ -182,7 +187,10 @@ class TestBaileysHealthChecks:
         monitor = HealthMonitor()
 
         # Mock requests.get to raise ConnectionError
-        with patch('backends.health.requests.get', side_effect=requests.exceptions.ConnectionError("Connection refused")):
+        with patch(
+            "backends.health.requests.get",
+            side_effect=requests.exceptions.ConnectionError("Connection refused"),
+        ):
             # Test: Check health when connection refused
             health = monitor.check_baileys_health()
 
@@ -201,7 +209,7 @@ class TestBaileysHealthChecks:
             responses.GET,
             f"{BAILEYS_BRIDGE_URL}/health",
             json={"error": "WhatsApp connection lost"},
-            status=500
+            status=500,
         )
 
         monitor = HealthMonitor()
@@ -227,14 +235,19 @@ class TestHealthAggregation:
         responses.add(
             responses.GET,
             f"{GO_BRIDGE_URL}/health",
-            json={"status": "ok", "whatsapp_connected": True, "database_ok": True, "uptime_seconds": 3600},
-            status=200
+            json={
+                "status": "ok",
+                "whatsapp_connected": True,
+                "database_ok": True,
+                "uptime_seconds": 3600,
+            },
+            status=200,
         )
         responses.add(
             responses.GET,
             f"{BAILEYS_BRIDGE_URL}/health",
             json={"status": "ok", "connected": True, "uptime": 7200},
-            status=200
+            status=200,
         )
 
         monitor = HealthMonitor()
@@ -262,13 +275,13 @@ class TestHealthAggregation:
                     "status": "ok",
                     "whatsapp_connected": True,
                     "database_ok": True,
-                    "uptime_seconds": 3600
+                    "uptime_seconds": 3600,
                 }
                 return mock_response
             else:  # Baileys bridge
                 raise requests.exceptions.ConnectionError("Connection refused")
 
-        with patch('backends.health.requests.get', side_effect=mock_requests_get):
+        with patch("backends.health.requests.get", side_effect=mock_requests_get):
             # Test: Check all backends
             overall = monitor.check_all()
 
@@ -292,11 +305,11 @@ class TestHealthAggregation:
                 mock_response.json.return_value = {
                     "status": "ok",
                     "connected": True,
-                    "uptime": 7200
+                    "uptime": 7200,
                 }
                 return mock_response
 
-        with patch('backends.health.requests.get', side_effect=mock_requests_get):
+        with patch("backends.health.requests.get", side_effect=mock_requests_get):
             # Test: Check all backends
             overall = monitor.check_all()
 
@@ -311,7 +324,10 @@ class TestHealthAggregation:
         monitor = HealthMonitor()
 
         # Mock: Both backends down
-        with patch('backends.health.requests.get', side_effect=requests.exceptions.ConnectionError("Connection refused")):
+        with patch(
+            "backends.health.requests.get",
+            side_effect=requests.exceptions.ConnectionError("Connection refused"),
+        ):
             # Test: Check all backends
             overall = monitor.check_all()
 
@@ -331,14 +347,19 @@ class TestPrimaryBackendSelection:
         responses.add(
             responses.GET,
             f"{GO_BRIDGE_URL}/health",
-            json={"status": "ok", "whatsapp_connected": True, "database_ok": True, "uptime_seconds": 3600},
-            status=200
+            json={
+                "status": "ok",
+                "whatsapp_connected": True,
+                "database_ok": True,
+                "uptime_seconds": 3600,
+            },
+            status=200,
         )
         responses.add(
             responses.GET,
             f"{BAILEYS_BRIDGE_URL}/health",
             json={"status": "ok", "connected": True, "uptime": 7200},
-            status=200
+            status=200,
         )
 
         monitor = HealthMonitor()
@@ -365,8 +386,13 @@ class TestFailureCounters:
         responses.add(
             responses.GET,
             f"{GO_BRIDGE_URL}/health",
-            json={"status": "ok", "whatsapp_connected": True, "database_ok": True, "uptime_seconds": 3600},
-            status=200
+            json={
+                "status": "ok",
+                "whatsapp_connected": True,
+                "database_ok": True,
+                "uptime_seconds": 3600,
+            },
+            status=200,
         )
 
         # Test: Successful health check
@@ -385,11 +411,7 @@ class TestFailureCounters:
         def connection_error(request):
             raise requests.exceptions.ConnectionError("Connection refused")
 
-        responses.add_callback(
-            responses.GET,
-            f"{GO_BRIDGE_URL}/health",
-            callback=connection_error
-        )
+        responses.add_callback(responses.GET, f"{GO_BRIDGE_URL}/health", callback=connection_error)
 
         # Initial state
         assert monitor.go_failure_count == 0
@@ -418,13 +440,13 @@ class TestWaitForBackend:
             call_count[0] += 1
             if call_count[0] < 3:
                 raise requests.exceptions.ConnectionError("Connection refused")
-            return (200, {}, '{"status": "ok", "whatsapp_connected": true, "database_ok": true, "uptime_seconds": 100}')
+            return (
+                200,
+                {},
+                '{"status": "ok", "whatsapp_connected": true, "database_ok": true, "uptime_seconds": 100}',
+            )
 
-        responses.add_callback(
-            responses.GET,
-            f"{GO_BRIDGE_URL}/health",
-            callback=health_callback
-        )
+        responses.add_callback(responses.GET, f"{GO_BRIDGE_URL}/health", callback=health_callback)
 
         # Test: Wait for backend (should succeed on 3rd try)
         result = monitor.wait_for_backend("go", timeout=10, poll_interval=1)
@@ -442,11 +464,7 @@ class TestWaitForBackend:
         def health_error(request):
             raise requests.exceptions.ConnectionError("Connection refused")
 
-        responses.add_callback(
-            responses.GET,
-            f"{GO_BRIDGE_URL}/health",
-            callback=health_error
-        )
+        responses.add_callback(responses.GET, f"{GO_BRIDGE_URL}/health", callback=health_error)
 
         # Test: Wait for backend (should timeout)
         result = monitor.wait_for_backend("go", timeout=3, poll_interval=1)
@@ -465,14 +483,19 @@ class TestEdgeCases:
         responses.add(
             responses.GET,
             f"{GO_BRIDGE_URL}/health",
-            json={"status": "degraded", "whatsapp_connected": True, "database_ok": True, "uptime_seconds": 3600},
-            status=200
+            json={
+                "status": "degraded",
+                "whatsapp_connected": True,
+                "database_ok": True,
+                "uptime_seconds": 3600,
+            },
+            status=200,
         )
         responses.add(
             responses.GET,
             f"{BAILEYS_BRIDGE_URL}/health",
             json={"status": "degraded", "connected": True, "uptime": 7200},
-            status=200
+            status=200,
         )
 
         monitor = HealthMonitor()
@@ -493,8 +516,13 @@ class TestEdgeCases:
         responses.add(
             responses.GET,
             f"{GO_BRIDGE_URL}/health",
-            json={"status": "degraded", "whatsapp_connected": False, "database_ok": True, "uptime_seconds": 100},
-            status=200
+            json={
+                "status": "degraded",
+                "whatsapp_connected": False,
+                "database_ok": True,
+                "uptime_seconds": 100,
+            },
+            status=200,
         )
 
         monitor = HealthMonitor()
@@ -511,7 +539,10 @@ class TestEdgeCases:
         monitor = HealthMonitor()
 
         # Mock: Connection refused (port closed)
-        with patch('backends.health.requests.get', side_effect=requests.exceptions.ConnectionError("Connection refused")):
+        with patch(
+            "backends.health.requests.get",
+            side_effect=requests.exceptions.ConnectionError("Connection refused"),
+        ):
             # Test: Check health and measure time
             start_time = time.time()
             health = monitor.check_go_health(timeout=5)

@@ -60,10 +60,7 @@ class DockerServicesManager:
 
     def get_service_port(self, service_name: str) -> int | None:
         """Get the port number for a service."""
-        ports = {
-            "go-backend": 8080,
-            "baileys-backend": 8081
-        }
+        ports = {"go-backend": 8080, "baileys-backend": 8081}
         return ports.get(service_name)
 
     def restart_service(self, service_name: str):
@@ -190,16 +187,27 @@ def integration_test_data(integration_database) -> dict:
             "is_from_me": 0,
             "read_status": "unread" if i < 30 else "read",
             "message_type": "text",
-            "media_path": None
+            "media_path": None,
         }
         messages.append(msg)
 
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO messages (id, chat_jid, sender, content, timestamp, is_from_me, read_status, message_type, media_path)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (msg["id"], msg["chat_jid"], msg["sender"], msg["content"],
-              msg["timestamp"], msg["is_from_me"], msg["read_status"],
-              msg["message_type"], msg["media_path"]))
+        """,
+            (
+                msg["id"],
+                msg["chat_jid"],
+                msg["sender"],
+                msg["content"],
+                msg["timestamp"],
+                msg["is_from_me"],
+                msg["read_status"],
+                msg["message_type"],
+                msg["media_path"],
+            ),
+        )
 
     # Insert test chats
     chats = []
@@ -209,32 +217,41 @@ def integration_test_data(integration_database) -> dict:
             "name": f"Integration Test Group {i}",
             "is_group": 1,
             "unread_count": 10,
-            "last_message_timestamp": 1728745200 + i * 100
+            "last_message_timestamp": 1728745200 + i * 100,
         }
         chats.append(chat)
 
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO chats (jid, name, is_group, unread_count, last_message_timestamp)
             VALUES (?, ?, ?, ?, ?)
-        """, (chat["jid"], chat["name"], chat["is_group"],
-              chat["unread_count"], chat["last_message_timestamp"]))
+        """,
+            (
+                chat["jid"],
+                chat["name"],
+                chat["is_group"],
+                chat["unread_count"],
+                chat["last_message_timestamp"],
+            ),
+        )
 
     integration_database.commit()
 
     # Create test community structure
-    communities = [{
-        "community_jid": "120363143634035041@g.us",
-        "group_jids": [f"12036328{i:07d}@g.us" for i in range(2)],
-        "total_messages": 20,
-        "unread_messages": 10
-    }]
+    communities = [
+        {
+            "community_jid": "120363143634035041@g.us",
+            "group_jids": [f"12036328{i:07d}@g.us" for i in range(2)],
+            "total_messages": 20,
+            "unread_messages": 10,
+        }
+    ]
 
     return {
         "messages": messages,
         "chats": chats,
         "communities": communities,
         "contacts": [
-            {"jid": f"{i}9876543210@s.whatsapp.net", "name": f"Test Contact {i}"}
-            for i in range(10)
-        ]
+            {"jid": f"{i}9876543210@s.whatsapp.net", "name": f"Test Contact {i}"} for i in range(10)
+        ],
     }

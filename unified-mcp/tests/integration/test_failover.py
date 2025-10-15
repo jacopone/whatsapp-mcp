@@ -19,7 +19,7 @@ class TestAutomaticFailover:
 
         router = get_router()
 
-        with patch('backends.health.requests.get') as mock_get:
+        with patch("backends.health.requests.get") as mock_get:
             # Both backends healthy, then Go fails
             call_count = [0]
 
@@ -31,7 +31,7 @@ class TestAutomaticFailover:
                     "status": "ok",
                     "whatsapp_connected": True,
                     "database_ok": True,
-                    "uptime_seconds": 3600
+                    "uptime_seconds": 3600,
                 }
 
                 if "8080" in url:  # Go bridge
@@ -42,7 +42,7 @@ class TestAutomaticFailover:
                             "status": "ok",
                             "whatsapp_connected": True,
                             "database_ok": True,
-                            "uptime_seconds": 3600
+                            "uptime_seconds": 3600,
                         }
                         return go_response
                     else:
@@ -67,7 +67,7 @@ class TestAutomaticFailover:
 
         router = get_router()
 
-        with patch('backends.health.requests.get') as mock_get:
+        with patch("backends.health.requests.get") as mock_get:
             # Go healthy, Baileys fails
             def mock_get_side_effect(url, **kwargs):
                 go_response = Mock()
@@ -76,7 +76,7 @@ class TestAutomaticFailover:
                     "status": "ok",
                     "whatsapp_connected": True,
                     "database_ok": True,
-                    "uptime_seconds": 3600
+                    "uptime_seconds": 3600,
                 }
 
                 if "8080" in url:  # Go bridge
@@ -102,7 +102,7 @@ class TestBothBackendsFailure:
 
         router = get_router()
 
-        with patch('backends.health.requests.get') as mock_get:
+        with patch("backends.health.requests.get") as mock_get:
             # Both backends fail
             mock_get.side_effect = requests.exceptions.ConnectionError("Connection refused")
 
@@ -121,7 +121,7 @@ class TestBackendRecovery:
 
         monitor = HealthMonitor()
 
-        with patch('backends.health.requests.get') as mock_get:
+        with patch("backends.health.requests.get") as mock_get:
             # Go fails initially
             call_count = [0]
 
@@ -133,7 +133,7 @@ class TestBackendRecovery:
                     "status": "ok",
                     "whatsapp_connected": True,
                     "database_ok": True,
-                    "uptime_seconds": 3600
+                    "uptime_seconds": 3600,
                 }
 
                 if "8080" in url:  # Go bridge
@@ -148,7 +148,7 @@ class TestBackendRecovery:
                             "status": "ok",
                             "whatsapp_connected": True,
                             "database_ok": True,
-                            "uptime_seconds": 10  # Just restarted
+                            "uptime_seconds": 10,  # Just restarted
                         }
                         return go_response
                 else:  # Baileys bridge - always healthy
@@ -173,7 +173,7 @@ class TestBackendRecovery:
 
         monitor = HealthMonitor()
 
-        with patch('backends.health.requests.get') as mock_get:
+        with patch("backends.health.requests.get") as mock_get:
             # Baileys fails initially, then recovers
             call_count = [0]
 
@@ -185,7 +185,7 @@ class TestBackendRecovery:
                     "status": "ok",
                     "whatsapp_connected": True,
                     "database_ok": True,
-                    "uptime_seconds": 3600
+                    "uptime_seconds": 3600,
                 }
 
                 if "8081" in url:  # Baileys bridge
@@ -200,7 +200,7 @@ class TestBackendRecovery:
                             "status": "ok",
                             "whatsapp_connected": True,
                             "database_ok": True,
-                            "uptime_seconds": 5  # Just restarted
+                            "uptime_seconds": 5,  # Just restarted
                         }
                         return baileys_response
                 else:  # Go bridge - always healthy
@@ -229,7 +229,7 @@ class TestFailurePerformance:
 
         router = get_router()
 
-        with patch('backends.health.requests.get') as mock_get:
+        with patch("backends.health.requests.get") as mock_get:
             # Both backends fail immediately
             mock_get.side_effect = requests.exceptions.ConnectionError("Connection refused")
 
@@ -252,7 +252,7 @@ class TestFastestStrategyFailover:
 
         monitor = HealthMonitor()
 
-        with patch('backends.health.requests.get') as mock_get:
+        with patch("backends.health.requests.get") as mock_get:
             # Setup: Initially Go is faster, then Baileys becomes faster
             call_count = [0]
 
@@ -266,7 +266,7 @@ class TestFastestStrategyFailover:
                         "status": "ok",
                         "whatsapp_connected": True,
                         "database_ok": True,
-                        "uptime_seconds": 3600
+                        "uptime_seconds": 3600,
                     }
                     # Go always responds, just record that it was checked
                     return go_response
@@ -277,7 +277,7 @@ class TestFastestStrategyFailover:
                         "status": "ok",
                         "whatsapp_connected": True,
                         "database_ok": True,
-                        "uptime_seconds": 3600
+                        "uptime_seconds": 3600,
                     }
                     return baileys_response
 
@@ -304,7 +304,7 @@ class TestNetworkPartition:
 
         monitor = HealthMonitor()
 
-        with patch('backends.health.requests.get') as mock_get:
+        with patch("backends.health.requests.get") as mock_get:
             # Simulate network partition: connection timeout (not refused)
             def mock_get_side_effect(url, **kwargs):
                 baileys_response = Mock()
@@ -313,7 +313,7 @@ class TestNetworkPartition:
                     "status": "ok",
                     "whatsapp_connected": True,
                     "database_ok": True,
-                    "uptime_seconds": 3600
+                    "uptime_seconds": 3600,
                 }
 
                 if "8080" in url:  # Go bridge - network partition

@@ -15,6 +15,7 @@ import pytest
 @dataclass
 class WorkflowStep:
     """Represents a single step in an e2e workflow."""
+
     name: str
     start_time: float = None
     end_time: float = None
@@ -32,16 +33,13 @@ def e2e_test_community():
     """
     # Return test community structure (no database required for mocked e2e tests)
     community_jid = "120363143634035041@g.us"
-    group_jids = [
-        "120363281234567890@g.us",
-        "120363289876543210@g.us"
-    ]
+    group_jids = ["120363281234567890@g.us", "120363289876543210@g.us"]
 
     yield {
         "community_jid": community_jid,
         "group_jids": group_jids,
         "total_messages": 100,
-        "unread_messages": 100
+        "unread_messages": 100,
     }
 
 
@@ -91,11 +89,7 @@ class WorkflowTracker:
     def _generate_steps_report(self) -> dict:
         """Generate report for individual steps."""
         return {
-            step.name: {
-                "duration": step.duration,
-                "success": step.success,
-                "error": step.error
-            }
+            step.name: {"duration": step.duration, "success": step.success, "error": step.error}
             for step in self.steps
         }
 
@@ -119,14 +113,14 @@ class WorkflowTracker:
             "total_steps": len(self.steps),
             "successful_steps": successful_count,
             "failed_steps": failed_count,
-            "overall_success": all(s.success for s in self.steps if s.success is not None)
+            "overall_success": all(s.success for s in self.steps if s.success is not None),
         }
 
     def assert_all_steps_successful(self):
         """Assert that all workflow steps completed successfully."""
         report = self.get_report()
         if not report["overall_success"]:
-            failed = [name for name, details in report['steps'].items() if not details['success']]
+            failed = [name for name, details in report["steps"].items() if not details["success"]]
             assert False, f"Workflow had {report['failed_steps']} failed steps: {failed}"
 
     def assert_total_duration_under(self, max_seconds: float):

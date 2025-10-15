@@ -1,4 +1,5 @@
 """HTTP client for Baileys bridge."""
+
 import time
 from typing import Any
 
@@ -10,15 +11,13 @@ from constants import BAILEYS_BRIDGE_URL, HEALTH_CHECK_TIMEOUT, SHORT_TIMEOUT
 def get_sync_status() -> dict[str, Any]:
     """Get current history sync status."""
     try:
-        response = requests.get(f"{BAILEYS_BRIDGE_URL}/api/sync/status", timeout=HEALTH_CHECK_TIMEOUT)
+        response = requests.get(
+            f"{BAILEYS_BRIDGE_URL}/api/sync/status", timeout=HEALTH_CHECK_TIMEOUT
+        )
         response.raise_for_status()
         return response.json()
     except Exception as e:
-        return {
-            "connected": False,
-            "is_syncing": False,
-            "error": str(e)
-        }
+        return {"connected": False, "is_syncing": False, "error": str(e)}
 
 
 def wait_for_sync_completion(timeout: int = 300, poll_interval: int = 5) -> bool:
@@ -96,6 +95,7 @@ def health_check() -> bool:
 # T053: Business MCP Tools - HTTP clients for Baileys bridge
 # ============================================================================
 
+
 def get_business_catalog(jid: str) -> dict[str, Any]:
     """Get business catalog via Baileys bridge.
 
@@ -107,8 +107,7 @@ def get_business_catalog(jid: str) -> dict[str, Any]:
     """
     try:
         response = requests.get(
-            f"{BAILEYS_BRIDGE_URL}/api/business/{jid}/catalog",
-            timeout=SHORT_TIMEOUT
+            f"{BAILEYS_BRIDGE_URL}/api/business/{jid}/catalog", timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -129,8 +128,7 @@ def get_product_details(jid: str, product_id: str) -> dict[str, Any]:
     """
     try:
         response = requests.get(
-            f"{BAILEYS_BRIDGE_URL}/api/business/{jid}/catalog/{product_id}",
-            timeout=SHORT_TIMEOUT
+            f"{BAILEYS_BRIDGE_URL}/api/business/{jid}/catalog/{product_id}", timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()

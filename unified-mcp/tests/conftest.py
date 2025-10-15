@@ -21,44 +21,50 @@ def sample_messages() -> list[dict]:
 
     # 5 unread messages
     for i in range(5):
-        messages.append({
-            "id": f"msg-{i:05d}",
-            "chat_jid": "1234567890@s.whatsapp.net",
-            "sender": f"{i}9876543210@s.whatsapp.net",
-            "content": f"Test message {i}",
-            "timestamp": TEST_TIMESTAMP_BASE + i * 60,
-            "is_from_me": i % 3 == 0,
-            "read_status": "unread",
-            "message_type": "text",
-            "media_path": None
-        })
+        messages.append(
+            {
+                "id": f"msg-{i:05d}",
+                "chat_jid": "1234567890@s.whatsapp.net",
+                "sender": f"{i}9876543210@s.whatsapp.net",
+                "content": f"Test message {i}",
+                "timestamp": TEST_TIMESTAMP_BASE + i * 60,
+                "is_from_me": i % 3 == 0,
+                "read_status": "unread",
+                "message_type": "text",
+                "media_path": None,
+            }
+        )
 
     # 5 read messages
     for i in range(5, 10):
-        messages.append({
-            "id": f"msg-{i:05d}",
-            "chat_jid": "120363281234567890@g.us",  # Group chat
-            "sender": f"{i}9876543210@s.whatsapp.net",
-            "content": f"Test message {i}",
-            "timestamp": TEST_TIMESTAMP_BASE + i * 60,
-            "is_from_me": False,
-            "read_status": "read",
-            "message_type": "text",
-            "media_path": None
-        })
+        messages.append(
+            {
+                "id": f"msg-{i:05d}",
+                "chat_jid": "120363281234567890@g.us",  # Group chat
+                "sender": f"{i}9876543210@s.whatsapp.net",
+                "content": f"Test message {i}",
+                "timestamp": TEST_TIMESTAMP_BASE + i * 60,
+                "is_from_me": False,
+                "read_status": "read",
+                "message_type": "text",
+                "media_path": None,
+            }
+        )
 
     # 1 media message
-    messages.append({
-        "id": "msg-media-00001",
-        "chat_jid": "1234567890@s.whatsapp.net",
-        "sender": "9876543210@s.whatsapp.net",
-        "content": "[image]",
-        "timestamp": TEST_TIMESTAMP_BASE + 600,
-        "is_from_me": False,
-        "read_status": "unread",
-        "message_type": "image",
-        "media_path": "/test/media/image001.jpg"
-    })
+    messages.append(
+        {
+            "id": "msg-media-00001",
+            "chat_jid": "1234567890@s.whatsapp.net",
+            "sender": "9876543210@s.whatsapp.net",
+            "content": "[image]",
+            "timestamp": TEST_TIMESTAMP_BASE + 600,
+            "is_from_me": False,
+            "read_status": "unread",
+            "message_type": "image",
+            "media_path": "/test/media/image001.jpg",
+        }
+    )
 
     return messages
 
@@ -73,27 +79,29 @@ def sample_chats() -> list[dict]:
 
     # 3 direct chats
     for i in range(3):
-        chats.append({
-            "jid": f"{i}1234567890@s.whatsapp.net",
-            "name": f"Test Contact {i}",
-            "is_group": False,
-            "unread_count": i * 2,
-            "last_message_timestamp": TEST_TIMESTAMP_BASE + i * 100,
-            "participants": None
-        })
+        chats.append(
+            {
+                "jid": f"{i}1234567890@s.whatsapp.net",
+                "name": f"Test Contact {i}",
+                "is_group": False,
+                "unread_count": i * 2,
+                "last_message_timestamp": TEST_TIMESTAMP_BASE + i * 100,
+                "participants": None,
+            }
+        )
 
     # 2 group chats
     for i in range(2):
-        chats.append({
-            "jid": f"12036328{i:07d}@g.us",
-            "name": f"Test Group {i}",
-            "is_group": True,
-            "unread_count": i * 10,
-            "last_message_timestamp": TEST_TIMESTAMP_BASE + (i + 3) * 100,
-            "participants": [
-                f"{j}1234567890@s.whatsapp.net" for j in range(5)
-            ]
-        })
+        chats.append(
+            {
+                "jid": f"12036328{i:07d}@g.us",
+                "name": f"Test Group {i}",
+                "is_group": True,
+                "unread_count": i * 10,
+                "last_message_timestamp": TEST_TIMESTAMP_BASE + (i + 3) * 100,
+                "participants": [f"{j}1234567890@s.whatsapp.net" for j in range(5)],
+            }
+        )
 
     return chats
 
@@ -110,7 +118,7 @@ def sample_health_response() -> dict:
         "requests_handled": 1250,
         "active_connections": 5,
         "last_error": None,
-        "backend_version": "1.0.0-test"
+        "backend_version": "1.0.0-test",
     }
 
 

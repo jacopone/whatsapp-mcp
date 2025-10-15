@@ -17,6 +17,7 @@ from routing import OperationType, RoutingStrategy
 @dataclass
 class MockBackendHealth:
     """Mock backend health status."""
+
     status: str  # "ok", "degraded", "error", "unreachable"
     response_time_ms: float = 100.0
     uptime_seconds: int = 3600
@@ -26,6 +27,7 @@ class MockBackendHealth:
 @dataclass
 class MockOverallHealth:
     """Mock overall health status."""
+
     primary_backend: str = "go"
     available_backends: list[str] = None
     go_backend: MockBackendHealth = None
@@ -77,12 +79,7 @@ class BackendMock:
     def setup_health_endpoint(self):
         """Setup health endpoint mock."""
         json_data, status_code = self._get_health_response()
-        responses.add(
-            responses.GET,
-            f"{self.base_url}/health",
-            json=json_data,
-            status=status_code
-        )
+        responses.add(responses.GET, f"{self.base_url}/health", json=json_data, status=status_code)
 
     def get_call_history(self) -> list[dict]:
         """Get history of all calls."""
@@ -135,6 +132,7 @@ def mock_health_monitor(mock_go_backend, mock_baileys_backend):
 
     Integrates with mock_go_backend and mock_baileys_backend fixtures.
     """
+
     class MockHealthMonitor:
         def __init__(self):
             self.go_health = MockBackendHealth(status="ok", response_time_ms=100.0)
@@ -142,16 +140,12 @@ def mock_health_monitor(mock_go_backend, mock_baileys_backend):
 
         def set_go_health(self, status: str, response_time_ms: float = 100.0):
             """Set Go backend health status."""
-            self.go_health = MockBackendHealth(
-                status=status,
-                response_time_ms=response_time_ms
-            )
+            self.go_health = MockBackendHealth(status=status, response_time_ms=response_time_ms)
 
         def set_baileys_health(self, status: str, response_time_ms: float = 120.0):
             """Set Baileys backend health status."""
             self.baileys_health = MockBackendHealth(
-                status=status,
-                response_time_ms=response_time_ms
+                status=status, response_time_ms=response_time_ms
             )
 
         def check_all(self) -> MockOverallHealth:
@@ -174,7 +168,7 @@ def mock_health_monitor(mock_go_backend, mock_baileys_backend):
                 primary_backend=primary,
                 available_backends=available,
                 go_backend=self.go_health,
-                baileys_backend=self.baileys_health
+                baileys_backend=self.baileys_health,
             )
 
         def is_backend_available(self, backend: str) -> bool:
@@ -194,44 +188,54 @@ def sample_operations() -> list[dict]:
     operations = []
 
     # Message operations (PREFER_GO)
-    for op in [OperationType.SEND_MESSAGE, OperationType.SEND_FILE,
-               OperationType.SEND_AUDIO, OperationType.MARK_AS_READ]:
-        operations.append({
-            "type": op,
-            "expected_backend": "go",
-            "strategy": RoutingStrategy.PREFER_GO
-        })
+    for op in [
+        OperationType.SEND_MESSAGE,
+        OperationType.SEND_FILE,
+        OperationType.SEND_AUDIO,
+        OperationType.MARK_AS_READ,
+    ]:
+        operations.append(
+            {"type": op, "expected_backend": "go", "strategy": RoutingStrategy.PREFER_GO}
+        )
 
     # History sync operations
-    operations.append({
-        "type": OperationType.SYNC_FULL_HISTORY,
-        "expected_backend": "baileys",
-        "strategy": RoutingStrategy.PREFER_BAILEYS
-    })
+    operations.append(
+        {
+            "type": OperationType.SYNC_FULL_HISTORY,
+            "expected_backend": "baileys",
+            "strategy": RoutingStrategy.PREFER_BAILEYS,
+        }
+    )
 
-    operations.append({
-        "type": OperationType.SYNC_CHAT_HISTORY,
-        "expected_backend": "go",
-        "strategy": RoutingStrategy.PREFER_GO
-    })
+    operations.append(
+        {
+            "type": OperationType.SYNC_CHAT_HISTORY,
+            "expected_backend": "go",
+            "strategy": RoutingStrategy.PREFER_GO,
+        }
+    )
 
     # Community operations (PREFER_GO)
-    for op in [OperationType.LIST_COMMUNITIES, OperationType.GET_COMMUNITY_GROUPS,
-               OperationType.MARK_COMMUNITY_AS_READ]:
-        operations.append({
-            "type": op,
-            "expected_backend": "go",
-            "strategy": RoutingStrategy.PREFER_GO
-        })
+    for op in [
+        OperationType.LIST_COMMUNITIES,
+        OperationType.GET_COMMUNITY_GROUPS,
+        OperationType.MARK_COMMUNITY_AS_READ,
+    ]:
+        operations.append(
+            {"type": op, "expected_backend": "go", "strategy": RoutingStrategy.PREFER_GO}
+        )
 
     # Contact/chat operations (PREFER_GO)
-    for op in [OperationType.SEARCH_CONTACTS, OperationType.LIST_CONTACTS,
-               OperationType.LIST_CHATS, OperationType.GET_CHAT, OperationType.LIST_MESSAGES]:
-        operations.append({
-            "type": op,
-            "expected_backend": "go",
-            "strategy": RoutingStrategy.PREFER_GO
-        })
+    for op in [
+        OperationType.SEARCH_CONTACTS,
+        OperationType.LIST_CONTACTS,
+        OperationType.LIST_CHATS,
+        OperationType.GET_CHAT,
+        OperationType.LIST_MESSAGES,
+    ]:
+        operations.append(
+            {"type": op, "expected_backend": "go", "strategy": RoutingStrategy.PREFER_GO}
+        )
 
     return operations
 
@@ -242,6 +246,7 @@ def mock_time(monkeypatch):
 
     Returns a mock time controller.
     """
+
     class MockTime:
         def __init__(self):
             self.current_time = 1728745200.0  # Fixed timestamp

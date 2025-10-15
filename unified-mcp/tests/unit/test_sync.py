@@ -3,6 +3,7 @@
 Tests batch processing, deduplication, error handling, and performance.
 Target: 75%+ coverage of sync.py (410 lines)
 """
+
 import time
 from unittest.mock import patch
 
@@ -23,7 +24,7 @@ class TestBatchSizes:
             responses.GET,
             "http://localhost:8081/history/messages",
             json={"messages": []},
-            status=200
+            status=200,
         )
 
         # Create sync service
@@ -46,15 +47,17 @@ class TestBatchSizes:
             responses.GET,
             "http://localhost:8081/history/messages",
             json={
-                "messages": [{
-                    "id": "msg-00001",
-                    "sender": "1234567890@s.whatsapp.net",
-                    "content": "Test message",
-                    "timestamp": 1728745200,
-                    "is_from_me": False
-                }]
+                "messages": [
+                    {
+                        "id": "msg-00001",
+                        "sender": "1234567890@s.whatsapp.net",
+                        "content": "Test message",
+                        "timestamp": 1728745200,
+                        "is_from_me": False,
+                    }
+                ]
             },
-            status=200
+            status=200,
         )
 
         # Setup: Go DB accepts the insert
@@ -62,7 +65,7 @@ class TestBatchSizes:
             responses.POST,
             "http://localhost:8080/messages/batch",
             json={"inserted_count": 1},
-            status=200
+            status=200,
         )
 
         # Create sync service
@@ -86,7 +89,7 @@ class TestBatchSizes:
                 "sender": f"{i}@s.whatsapp.net",
                 "content": f"Message {i}",
                 "timestamp": 1728745200 + i,
-                "is_from_me": i % 3 == 0
+                "is_from_me": i % 3 == 0,
             }
             for i in range(100)
         ]
@@ -95,7 +98,7 @@ class TestBatchSizes:
             responses.GET,
             "http://localhost:8081/history/messages",
             json={"messages": messages},
-            status=200
+            status=200,
         )
 
         # Setup: Go DB accepts all messages
@@ -103,7 +106,7 @@ class TestBatchSizes:
             responses.POST,
             "http://localhost:8080/messages/batch",
             json={"inserted_count": 100},
-            status=200
+            status=200,
         )
 
         # Create sync service
@@ -127,7 +130,7 @@ class TestBatchSizes:
                 "sender": f"{i % 100}@s.whatsapp.net",
                 "content": f"Message {i}",
                 "timestamp": 1728745200 + i,
-                "is_from_me": False
+                "is_from_me": False,
             }
             for i in range(1000)
         ]
@@ -136,7 +139,7 @@ class TestBatchSizes:
             responses.GET,
             "http://localhost:8081/history/messages",
             json={"messages": messages},
-            status=200
+            status=200,
         )
 
         # Setup: Go DB accepts all messages
@@ -144,7 +147,7 @@ class TestBatchSizes:
             responses.POST,
             "http://localhost:8080/messages/batch",
             json={"inserted_count": 1000},
-            status=200
+            status=200,
         )
 
         # Create sync service with batch_size=1000
@@ -167,7 +170,7 @@ class TestBatchSizes:
                 "sender": f"{i % 100}@s.whatsapp.net",
                 "content": f"Message {i}",
                 "timestamp": 1728745200 + i,
-                "is_from_me": False
+                "is_from_me": False,
             }
             for i in range(10000)
         ]
@@ -176,7 +179,7 @@ class TestBatchSizes:
             responses.GET,
             "http://localhost:8081/history/messages",
             json={"messages": messages},
-            status=200
+            status=200,
         )
 
         # Setup: Go DB accepts all messages
@@ -184,7 +187,7 @@ class TestBatchSizes:
             responses.POST,
             "http://localhost:8080/messages/batch",
             json={"inserted_count": 10000},
-            status=200
+            status=200,
         )
 
         # Create sync service with large batch_size
@@ -215,7 +218,9 @@ class TestDeduplication:
         ]
 
         # Mock _get_existing_message_ids to return some duplicates
-        with patch.object(sync_service, '_get_existing_message_ids', return_value={"msg-001", "msg-003"}):
+        with patch.object(
+            sync_service, "_get_existing_message_ids", return_value={"msg-001", "msg-003"}
+        ):
             deduplicated, dup_count = sync_service._deduplicate_messages("test_chat@g.us", messages)
 
         # Verify: Only msg-002 should remain
@@ -235,7 +240,7 @@ class TestDeduplication:
         ]
 
         # Mock: None are duplicates (different IDs mean different messages)
-        with patch.object(sync_service, '_get_existing_message_ids', return_value=set()):
+        with patch.object(sync_service, "_get_existing_message_ids", return_value=set()):
             deduplicated, dup_count = sync_service._deduplicate_messages("test_chat@g.us", messages)
 
         # Verify: All 3 messages should be kept (different IDs)
@@ -252,7 +257,7 @@ class TestDeduplication:
                 "sender": f"{i}@s.whatsapp.net",
                 "content": f"Message {i}",
                 "timestamp": 1728745200 + i,
-                "is_from_me": False
+                "is_from_me": False,
             }
             for i in range(500)
         ]
@@ -261,7 +266,7 @@ class TestDeduplication:
             responses.GET,
             "http://localhost:8081/history/messages",
             json={"messages": messages},
-            status=200
+            status=200,
         )
 
         # Setup: Go DB accepts 300 messages (500 - 200 duplicates)
@@ -269,7 +274,7 @@ class TestDeduplication:
             responses.POST,
             "http://localhost:8080/messages/batch",
             json={"inserted_count": 300},
-            status=200
+            status=200,
         )
 
         # Create sync service
@@ -277,7 +282,7 @@ class TestDeduplication:
 
         # Mock deduplication to remove 200 messages
         existing_ids = {f"msg-{i:05d}" for i in range(200)}
-        with patch.object(sync_service, '_get_existing_message_ids', return_value=existing_ids):
+        with patch.object(sync_service, "_get_existing_message_ids", return_value=existing_ids):
             result = sync_service.sync_messages("test_chat@g.us")
 
         # Verify: 300 synced, 200 deduplicated
@@ -297,7 +302,7 @@ class TestBatchInsertion:
             responses.POST,
             "http://localhost:8080/messages/batch",
             json={"inserted_count": 50},
-            status=200
+            status=200,
         )
 
         sync_service = DatabaseSyncService()
@@ -309,7 +314,7 @@ class TestBatchInsertion:
                 "sender": f"{i}@s.whatsapp.net",
                 "content": f"Message {i}",
                 "timestamp": 1728745200 + i,
-                "is_from_me": False
+                "is_from_me": False,
             }
             for i in range(50)
         ]
@@ -328,7 +333,7 @@ class TestBatchInsertion:
             responses.POST,
             "http://localhost:8080/messages/batch",
             json={"inserted_count": 30, "failed_count": 20},
-            status=200
+            status=200,
         )
 
         sync_service = DatabaseSyncService()
@@ -354,7 +359,7 @@ class TestNetworkErrors:
             responses.GET,
             "http://localhost:8081/history/messages",
             body=Exception("Connection timeout"),
-            status=500
+            status=500,
         )
 
         sync_service = DatabaseSyncService(request_timeout=5)
@@ -376,7 +381,7 @@ class TestCheckpoints:
         sync_service = DatabaseSyncService()
 
         # Mock _update_checkpoint
-        with patch.object(sync_service, '_update_checkpoint') as mock_checkpoint:
+        with patch.object(sync_service, "_update_checkpoint") as mock_checkpoint:
             # Call with test data
             sync_service._update_checkpoint("test_chat@g.us", 150)
 
@@ -404,7 +409,7 @@ class TestTempDBCleanup:
         sync_service = DatabaseSyncService()
 
         # Mock _clear_baileys_temp_db
-        with patch.object(sync_service, '_clear_baileys_temp_db') as mock_clear:
+        with patch.object(sync_service, "_clear_baileys_temp_db") as mock_clear:
             sync_service._clear_baileys_temp_db()
 
             # Verify: Called
@@ -436,7 +441,7 @@ class TestPerformance:
                 "sender": f"{i % 100}@s.whatsapp.net",
                 "content": f"Message {i}",
                 "timestamp": 1728745200 + i,
-                "is_from_me": False
+                "is_from_me": False,
             }
             for i in range(1000)
         ]
@@ -445,7 +450,7 @@ class TestPerformance:
             responses.GET,
             "http://localhost:8081/history/messages",
             json={"messages": messages},
-            status=200
+            status=200,
         )
 
         # Setup: Go DB accepts all messages quickly
@@ -453,7 +458,7 @@ class TestPerformance:
             responses.POST,
             "http://localhost:8080/messages/batch",
             json={"inserted_count": 1000},
-            status=200
+            status=200,
         )
 
         sync_service = DatabaseSyncService(batch_size=1000)
@@ -483,14 +488,8 @@ class TestSyncAllChats:
         responses.add(
             responses.GET,
             "http://localhost:8081/chats/list",
-            json={
-                "chats": [
-                    {"jid": "chat1@g.us"},
-                    {"jid": "chat2@g.us"},
-                    {"jid": "chat3@g.us"}
-                ]
-            },
-            status=200
+            json={"chats": [{"jid": "chat1@g.us"}, {"jid": "chat2@g.us"}, {"jid": "chat3@g.us"}]},
+            status=200,
         )
 
         # Setup: Each chat returns some messages
@@ -499,13 +498,13 @@ class TestSyncAllChats:
                 responses.GET,
                 "http://localhost:8081/history/messages",
                 json={"messages": [{"id": f"msg-{i}", "timestamp": 1728745200 + i}]},
-                status=200
+                status=200,
             )
             responses.add(
                 responses.POST,
                 "http://localhost:8080/messages/batch",
                 json={"inserted_count": 1},
-                status=200
+                status=200,
             )
 
         # Test: Sync all chats
@@ -529,17 +528,15 @@ class TestSyncResult:
         responses.add(
             responses.GET,
             "http://localhost:8081/history/messages",
-            json={"messages": [
-                {"id": "msg-001", "timestamp": 1728745200, "content": "Test"}
-            ]},
-            status=200
+            json={"messages": [{"id": "msg-001", "timestamp": 1728745200, "content": "Test"}]},
+            status=200,
         )
 
         responses.add(
             responses.POST,
             "http://localhost:8080/messages/batch",
             json={"inserted_count": 1},
-            status=200
+            status=200,
         )
 
         sync_service = DatabaseSyncService()
@@ -548,12 +545,12 @@ class TestSyncResult:
         result = sync_service.sync_messages("test_chat@g.us")
 
         # Verify: Result has all expected fields
-        assert hasattr(result, 'success')
-        assert hasattr(result, 'messages_synced')
-        assert hasattr(result, 'messages_deduplicated')
-        assert hasattr(result, 'elapsed_seconds')
-        assert hasattr(result, 'error_message')
-        assert hasattr(result, 'details')
+        assert hasattr(result, "success")
+        assert hasattr(result, "messages_synced")
+        assert hasattr(result, "messages_deduplicated")
+        assert hasattr(result, "elapsed_seconds")
+        assert hasattr(result, "error_message")
+        assert hasattr(result, "details")
 
         # Verify: Values are correct
         assert result.success is True
@@ -574,10 +571,8 @@ class TestGoDatabaseErrors:
         responses.add(
             responses.GET,
             "http://localhost:8081/history/messages",
-            json={"messages": [
-                {"id": "msg-001", "timestamp": 1728745200}
-            ]},
-            status=200
+            json={"messages": [{"id": "msg-001", "timestamp": 1728745200}]},
+            status=200,
         )
 
         # Setup: Go DB connection fails
@@ -585,7 +580,7 @@ class TestGoDatabaseErrors:
             responses.POST,
             "http://localhost:8080/messages/batch",
             body=Exception("Connection refused"),
-            status=500
+            status=500,
         )
 
         sync_service = DatabaseSyncService()
@@ -610,7 +605,7 @@ class TestConvenienceFunction:
             responses.GET,
             "http://localhost:8081/history/messages",
             json={"messages": []},
-            status=200
+            status=200,
         )
 
         # Test: Use convenience function

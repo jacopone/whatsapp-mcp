@@ -100,6 +100,7 @@ Rationale: Caching health status for 1 second prevents excessive health
 # =============================================================================
 # All examples follow FR-025 (executable docstring examples)
 
+
 def example_usage() -> None:
     """Demonstrate how to use constants in application code.
 
@@ -118,6 +119,7 @@ def example_usage() -> None:
         >>> # DEFAULT_TIMEOUT = 60  # Error: Cannot assign to final name
     """
     pass
+
 
 # =============================================================================
 # Validation Criteria (From contracts/)
