@@ -272,3 +272,23 @@ def mock_time(monkeypatch):
     monkeypatch.setattr(time, "time", mock_time_func)
 
     return mock
+
+
+@pytest.fixture(autouse=True)
+def reset_responses():
+    """Automatically reset responses state before each test.
+
+    This fixture ensures responses library state is cleaned between test runs,
+    preventing state pollution especially with pytest-rerunfailures.
+
+    Critical for CI where tests are retried multiple times (--reruns 3).
+    """
+    # Reset responses state before test
+    responses.reset()
+    responses.start()
+
+    yield
+
+    # Clean up after test
+    responses.stop()
+    responses.reset()
