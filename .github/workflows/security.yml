@@ -67,6 +67,7 @@ jobs:
           output: 'trivy-results.sarif'
           severity: 'CRITICAL,HIGH'  # Only fail on critical and high severity
           exit-code: '1'  # Fail CI on CRITICAL/HIGH vulnerabilities only
+          trivyignores: '.trivyignore'  # Use .trivyignore for false positive suppression
 
       - name: Upload Trivy results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
@@ -85,6 +86,7 @@ jobs:
           output: 'trivy-results-all.sarif'
           severity: 'CRITICAL,HIGH,MEDIUM,LOW'  # All severities for visibility
           exit-code: '0'  # Don't fail CI - informational only
+          trivyignores: '.trivyignore'  # Use .trivyignore for false positive suppression
 
       - name: Upload Trivy full scan results
         uses: github/codeql-action/upload-sarif@v3
