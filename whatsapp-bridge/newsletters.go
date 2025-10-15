@@ -1,9 +1,9 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"go.mau.fi/whatsmeow"
@@ -146,7 +146,7 @@ func handleSubscribeNewsletter(w http.ResponseWriter, r *http.Request, client *w
 	}
 
 	// Subscribe to newsletter using whatsmeow
-	err = client.SubscribeNewsletter(jid)
+	err = client.FollowNewsletter(jid)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -178,7 +178,7 @@ func handleUnsubscribeNewsletter(w http.ResponseWriter, r *http.Request, client 
 	}
 
 	// Unsubscribe from newsletter using whatsmeow
-	err = client.UnsubscribeNewsletter(jid)
+	err = client.UnfollowNewsletter(jid)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -220,7 +220,7 @@ func handleCreateNewsletter(w http.ResponseWriter, r *http.Request, client *what
 	}
 
 	// Create newsletter using whatsmeow
-	newsletterInfo, err := client.CreateNewsletter(types.CreateNewsletterParams{
+	newsletterInfo, err := client.CreateNewsletter(whatsmeow.CreateNewsletterParams{
 		Name:        req.Name,
 		Description: req.Description,
 	})
@@ -239,7 +239,7 @@ func handleCreateNewsletter(w http.ResponseWriter, r *http.Request, client *what
 		Success:   true,
 		Message:   "Newsletter created successfully",
 		JID:       newsletterInfo.ID.String(),
-		InviteURL: newsletterInfo.InviteCode,
+		InviteURL: newsletterInfo.ThreadMeta.InviteCode,
 	})
 }
 
@@ -277,15 +277,19 @@ func handleGetNewsletterInfo(w http.ResponseWriter, r *http.Request, client *wha
 		return
 	}
 
+	// Parse creation time from jsontime.UnixString to Unix timestamp
+	// CreationTime.Time is already time.Time, not a method
+	creationTimeInt := newsletterMeta.ThreadMeta.CreationTime.Time.Unix()
+
 	info := &NewsletterInfo{
 		JID:             newsletterMeta.ID.String(),
 		Name:            newsletterMeta.ThreadMeta.Name.Text,
 		Description:     newsletterMeta.ThreadMeta.Description.Text,
 		SubscriberCount: int(newsletterMeta.ThreadMeta.SubscriberCount),
-		CreationTime:    newsletterMeta.ThreadMeta.CreationTime,
-		State:           string(newsletterMeta.ThreadMeta.Settings.ReactionCodes),
-		OwnerJID:        newsletterMeta.ThreadMeta.Owner.String(),
-		Verification:    string(newsletterMeta.ViewerMeta.Role),
+		CreationTime:    creationTimeInt,
+		State:           "", // WrappedNewsletterState structure unclear - leaving empty for now
+		OwnerJID:        "", // Owner not directly available in ThreadMeta
+		Verification:    string(newsletterMeta.ThreadMeta.VerificationState),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -330,15 +334,22 @@ func handleReactToNewsletterMessage(w http.ResponseWriter, r *http.Request, clie
 	}
 
 	// React to newsletter message using whatsmeow
-	messageKey := types.MessageKey{
-		RemoteJID: jid,
-		ID:        messageID,
+	// Convert message ID string to MessageServerID (int type)
+	serverIDInt, err := strconv.Atoi(messageID)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(NewsletterReactResponse{
+			Success: false,
+			Message: "Invalid message server ID: " + err.Error(),
+		})
+		return
 	}
+	serverID := types.MessageServerID(serverIDInt)
 
-	_, err = client.SendMessage(context.Background(), jid, &types.ReactionMessage{
-		Key: messageKey,
-		Text: req.Emoji,
-	})
+	// Use NewsletterSendReaction for channel messages
+	// The last parameter (messageID) can be empty to auto-generate
+	err = client.NewsletterSendReaction(jid, serverID, req.Emoji, "")
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)

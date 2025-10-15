@@ -1,19 +1,24 @@
-"""
-HTTP client for Go/whatsmeow bridge.
-"""
+"""HTTP client for Go/whatsmeow bridge."""
+from typing import Any
+
 import requests
-from typing import List, Dict, Any, Optional, Tuple
 
-GO_BRIDGE_URL = "http://localhost:8080"
+from constants import (
+    DEFAULT_TIMEOUT,
+    GO_BRIDGE_URL,
+    HEALTH_CHECK_TIMEOUT,
+    MEDIA_TIMEOUT,
+    SHORT_TIMEOUT,
+)
 
 
-def send_message(recipient: str, message: str) -> Tuple[bool, str]:
+def send_message(recipient: str, message: str) -> tuple[bool, str]:
     """Send a text message via Go bridge."""
     try:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/send_message",
             json={"recipient": recipient, "message": message},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -22,13 +27,13 @@ def send_message(recipient: str, message: str) -> Tuple[bool, str]:
         return False, f"Error sending message: {e}"
 
 
-def send_file(recipient: str, file_path: str) -> Tuple[bool, str]:
+def send_file(recipient: str, file_path: str) -> tuple[bool, str]:
     """Send a file via Go bridge."""
     try:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/send_file",
             json={"recipient": recipient, "file_path": file_path},
-            timeout=60
+            timeout=MEDIA_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -37,22 +42,26 @@ def send_file(recipient: str, file_path: str) -> Tuple[bool, str]:
         return False, f"Error sending file: {e}"
 
 
-def mark_as_read(chat_jid: str, message_ids: List[str], sender: Optional[str] = None) -> Tuple[bool, str]:
-    """Mark messages as read via Go bridge."""
+def mark_as_read(chat_jid: str, message_ids: list[str], sender: str | None = None) -> tuple[bool, str, int, str]:
+    """Mark messages as read via Go bridge.
+
+    Phase 3: T011 - Fixed endpoint URL from /api/mark_as_read to /api/mark_read
+    """
     try:
         response = requests.post(
-            f"{GO_BRIDGE_URL}/api/mark_as_read",
+            f"{GO_BRIDGE_URL}/api/mark_read",  # Phase 3: T011 - Correct endpoint
             json={"chat_jid": chat_jid, "message_ids": message_ids, "sender": sender},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
-        return data.get("success", False), data.get("message", "")
+        # Phase 3: T012 - Return full response including count and error_code
+        return data.get("success", False), data.get("message", ""), data.get("count", 0), data.get("error_code", "")
     except Exception as e:
-        return False, f"Error marking as read: {e}"
+        return False, f"Error marking as read: {e}", 0, "CONNECTION_ERROR"
 
 
-def list_communities(query: Optional[str] = None, limit: int = 20) -> List[Dict[str, Any]]:
+def list_communities(query: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
     """List WhatsApp communities via Go bridge."""
     try:
         params = {"limit": limit}
@@ -62,7 +71,7 @@ def list_communities(query: Optional[str] = None, limit: int = 20) -> List[Dict[
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/communities",
             params=params,
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -72,13 +81,13 @@ def list_communities(query: Optional[str] = None, limit: int = 20) -> List[Dict[
         return []
 
 
-def get_community_groups(community_jid: str, limit: int = 100) -> List[Dict[str, Any]]:
+def get_community_groups(community_jid: str, limit: int = 100) -> list[dict[str, Any]]:
     """Get groups in a community via Go bridge."""
     try:
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/community/{community_jid}/groups",
             params={"limit": limit},
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -88,13 +97,13 @@ def get_community_groups(community_jid: str, limit: int = 100) -> List[Dict[str,
         return []
 
 
-def download_media(message_id: str, chat_jid: str) -> Optional[str]:
+def download_media(message_id: str, chat_jid: str) -> str | None:
     """Download media from a message via Go bridge."""
     try:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/download_media",
             json={"message_id": message_id, "chat_jid": chat_jid},
-            timeout=60
+            timeout=MEDIA_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -109,23 +118,23 @@ def download_media(message_id: str, chat_jid: str) -> Optional[str]:
 def health_check() -> bool:
     """Check if Go bridge is healthy."""
     try:
-        response = requests.get(f"{GO_BRIDGE_URL}/health", timeout=5)
+        response = requests.get(f"{GO_BRIDGE_URL}/health", timeout=HEALTH_CHECK_TIMEOUT)
         return response.status_code == 200
     except Exception:
         return False
 
 
 def query_messages(
-    chat_jid: Optional[str] = None,
-    sender: Optional[str] = None,
-    content: Optional[str] = None,
-    after_time: Optional[str] = None,
-    before_time: Optional[str] = None,
+    chat_jid: str | None = None,
+    sender: str | None = None,
+    content: str | None = None,
+    after_time: str | None = None,
+    before_time: str | None = None,
     limit: int = 100,
     offset: int = 0,
     include_media: bool = False,
-    media_type: Optional[str] = None
-) -> Dict[str, Any]:
+    media_type: str | None = None
+) -> dict[str, Any]:
     """Query messages with various filters via Go bridge."""
     try:
         params = {
@@ -150,7 +159,7 @@ def query_messages(
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/messages",
             params=params,
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -164,12 +173,12 @@ def query_messages(
         }
 
 
-def get_message_stats() -> Dict[str, Any]:
+def get_message_stats() -> dict[str, Any]:
     """Get message statistics via Go bridge."""
     try:
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/stats",
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -187,13 +196,13 @@ def get_message_stats() -> Dict[str, Any]:
 # T043: Messaging MCP Tools - HTTP clients for Go bridge
 # ============================================================================
 
-def send_text_message(chat_jid: str, text: str) -> Tuple[bool, str]:
+def send_text_message(chat_jid: str, text: str) -> tuple[bool, str]:
     """Send text message via Go bridge."""
     try:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/messages/send-text",
             json={"chat_jid": chat_jid, "text": text},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -202,7 +211,7 @@ def send_text_message(chat_jid: str, text: str) -> Tuple[bool, str]:
         return False, f"Error sending text message: {e}"
 
 
-def send_media_message(chat_jid: str, media_path: str, media_type: str, caption: Optional[str] = None) -> Tuple[bool, str]:
+def send_media_message(chat_jid: str, media_path: str, media_type: str, caption: str | None = None) -> tuple[bool, str]:
     """Send media message via Go bridge."""
     try:
         payload = {
@@ -216,7 +225,7 @@ def send_media_message(chat_jid: str, media_path: str, media_type: str, caption:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/messages/send-media",
             json=payload,
-            timeout=60
+            timeout=MEDIA_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -225,13 +234,13 @@ def send_media_message(chat_jid: str, media_path: str, media_type: str, caption:
         return False, f"Error sending media message: {e}"
 
 
-def send_voice_note(chat_jid: str, audio_path: str) -> Tuple[bool, str]:
+def send_voice_note(chat_jid: str, audio_path: str) -> tuple[bool, str]:
     """Send voice note via Go bridge."""
     try:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/messages/send-voice",
             json={"chat_jid": chat_jid, "audio_path": audio_path},
-            timeout=60
+            timeout=MEDIA_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -240,13 +249,13 @@ def send_voice_note(chat_jid: str, audio_path: str) -> Tuple[bool, str]:
         return False, f"Error sending voice note: {e}"
 
 
-def send_sticker(chat_jid: str, sticker_path: str) -> Tuple[bool, str]:
+def send_sticker(chat_jid: str, sticker_path: str) -> tuple[bool, str]:
     """Send sticker via Go bridge."""
     try:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/messages/send-sticker",
             json={"chat_jid": chat_jid, "sticker_path": sticker_path},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -255,13 +264,13 @@ def send_sticker(chat_jid: str, sticker_path: str) -> Tuple[bool, str]:
         return False, f"Error sending sticker: {e}"
 
 
-def send_contact(chat_jid: str, vcard: str) -> Tuple[bool, str]:
+def send_contact(chat_jid: str, vcard: str) -> tuple[bool, str]:
     """Send contact vCard via Go bridge."""
     try:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/messages/send-contact",
             json={"chat_jid": chat_jid, "vcard": vcard},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -270,13 +279,13 @@ def send_contact(chat_jid: str, vcard: str) -> Tuple[bool, str]:
         return False, f"Error sending contact: {e}"
 
 
-def send_location(chat_jid: str, latitude: float, longitude: float) -> Tuple[bool, str]:
+def send_location(chat_jid: str, latitude: float, longitude: float) -> tuple[bool, str]:
     """Send location via Go bridge."""
     try:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/messages/send-location",
             json={"chat_jid": chat_jid, "latitude": latitude, "longitude": longitude},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -285,13 +294,13 @@ def send_location(chat_jid: str, latitude: float, longitude: float) -> Tuple[boo
         return False, f"Error sending location: {e}"
 
 
-def react_to_message(chat_jid: str, message_id: str, emoji: str) -> Tuple[bool, str]:
+def react_to_message(chat_jid: str, message_id: str, emoji: str) -> tuple[bool, str]:
     """React to message via Go bridge."""
     try:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/messages/{message_id}/react",
             json={"chat_jid": chat_jid, "emoji": emoji},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -300,13 +309,13 @@ def react_to_message(chat_jid: str, message_id: str, emoji: str) -> Tuple[bool, 
         return False, f"Error reacting to message: {e}"
 
 
-def edit_message(message_id: str, new_text: str) -> Tuple[bool, str]:
+def edit_message(message_id: str, new_text: str) -> tuple[bool, str]:
     """Edit message via Go bridge."""
     try:
         response = requests.put(
             f"{GO_BRIDGE_URL}/api/messages/{message_id}/edit",
             json={"new_text": new_text},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -315,12 +324,12 @@ def edit_message(message_id: str, new_text: str) -> Tuple[bool, str]:
         return False, f"Error editing message: {e}"
 
 
-def delete_message(message_id: str) -> Tuple[bool, str]:
+def delete_message(message_id: str) -> tuple[bool, str]:
     """Delete/revoke message via Go bridge."""
     try:
         response = requests.delete(
             f"{GO_BRIDGE_URL}/api/messages/{message_id}/revoke",
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -329,13 +338,13 @@ def delete_message(message_id: str) -> Tuple[bool, str]:
         return False, f"Error deleting message: {e}"
 
 
-def forward_message(message_id: str, to_chat_jid: str) -> Tuple[bool, str]:
+def forward_message(message_id: str, to_chat_jid: str) -> tuple[bool, str]:
     """Forward message via Go bridge."""
     try:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/messages/{message_id}/forward",
             json={"to_chat_jid": to_chat_jid},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -344,14 +353,14 @@ def forward_message(message_id: str, to_chat_jid: str) -> Tuple[bool, str]:
         return False, f"Error forwarding message: {e}"
 
 
-def list_chats(limit: int = 20, archived: bool = False) -> List[Dict[str, Any]]:
+def list_chats(limit: int = 20, archived: bool = False) -> list[dict[str, Any]]:
     """List chats via Go bridge."""
     try:
         params = {"limit": limit, "archived": "true" if archived else "false"}
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/chats/list",
             params=params,
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -361,12 +370,12 @@ def list_chats(limit: int = 20, archived: bool = False) -> List[Dict[str, Any]]:
         return []
 
 
-def get_chat_metadata(chat_jid: str) -> Dict[str, Any]:
+def get_chat_metadata(chat_jid: str) -> dict[str, Any]:
     """Get chat metadata via Go bridge."""
     try:
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/chats/{chat_jid}",
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -379,12 +388,12 @@ def get_chat_metadata(chat_jid: str) -> Dict[str, Any]:
 # T044: Chat Management MCP Tools - HTTP clients for Go bridge
 # ============================================================================
 
-def archive_chat(chat_jid: str) -> Tuple[bool, str]:
+def archive_chat(chat_jid: str) -> tuple[bool, str]:
     """Archive a chat via Go bridge."""
     try:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/chats/{chat_jid}/archive",
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -393,12 +402,12 @@ def archive_chat(chat_jid: str) -> Tuple[bool, str]:
         return False, f"Error archiving chat: {e}"
 
 
-def unarchive_chat(chat_jid: str) -> Tuple[bool, str]:
+def unarchive_chat(chat_jid: str) -> tuple[bool, str]:
     """Unarchive a chat via Go bridge."""
     try:
         response = requests.delete(
             f"{GO_BRIDGE_URL}/api/chats/{chat_jid}/archive",
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -407,12 +416,12 @@ def unarchive_chat(chat_jid: str) -> Tuple[bool, str]:
         return False, f"Error unarchiving chat: {e}"
 
 
-def pin_chat(chat_jid: str) -> Tuple[bool, str]:
+def pin_chat(chat_jid: str) -> tuple[bool, str]:
     """Pin a chat via Go bridge."""
     try:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/chats/{chat_jid}/pin",
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -421,12 +430,12 @@ def pin_chat(chat_jid: str) -> Tuple[bool, str]:
         return False, f"Error pinning chat: {e}"
 
 
-def unpin_chat(chat_jid: str) -> Tuple[bool, str]:
+def unpin_chat(chat_jid: str) -> tuple[bool, str]:
     """Unpin a chat via Go bridge."""
     try:
         response = requests.delete(
             f"{GO_BRIDGE_URL}/api/chats/{chat_jid}/pin",
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -435,13 +444,13 @@ def unpin_chat(chat_jid: str) -> Tuple[bool, str]:
         return False, f"Error unpinning chat: {e}"
 
 
-def mute_chat(chat_jid: str, duration_seconds: int) -> Tuple[bool, str]:
+def mute_chat(chat_jid: str, duration_seconds: int) -> tuple[bool, str]:
     """Mute a chat via Go bridge."""
     try:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/chats/{chat_jid}/mute",
             json={"duration_seconds": duration_seconds},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -450,12 +459,12 @@ def mute_chat(chat_jid: str, duration_seconds: int) -> Tuple[bool, str]:
         return False, f"Error muting chat: {e}"
 
 
-def unmute_chat(chat_jid: str) -> Tuple[bool, str]:
+def unmute_chat(chat_jid: str) -> tuple[bool, str]:
     """Unmute a chat via Go bridge."""
     try:
         response = requests.delete(
             f"{GO_BRIDGE_URL}/api/chats/{chat_jid}/mute",
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -468,13 +477,13 @@ def unmute_chat(chat_jid: str) -> Tuple[bool, str]:
 # T045: Contact MCP Tools - HTTP clients for Go bridge
 # ============================================================================
 
-def search_contacts_v2(query: str) -> List[Dict[str, Any]]:
+def search_contacts_v2(query: str) -> list[dict[str, Any]]:
     """Search contacts via Go bridge."""
     try:
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/contacts/search",
             params={"query": query},
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -484,13 +493,13 @@ def search_contacts_v2(query: str) -> List[Dict[str, Any]]:
         return []
 
 
-def get_contact_details(jid: str) -> Dict[str, Any]:
+def get_contact_details(jid: str) -> dict[str, Any]:
     """Get contact details via Go bridge."""
     try:
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/contacts/details",
             params={"jid": jid},
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -499,13 +508,13 @@ def get_contact_details(jid: str) -> Dict[str, Any]:
         return {"success": False, "message": f"Error: {e}"}
 
 
-def check_is_on_whatsapp(phone: str) -> Dict[str, Any]:
+def check_is_on_whatsapp(phone: str) -> dict[str, Any]:
     """Check if phone number is on WhatsApp via Go bridge."""
     try:
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/contacts/is-on-whatsapp",
             params={"phone": phone},
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -514,13 +523,13 @@ def check_is_on_whatsapp(phone: str) -> Dict[str, Any]:
         return {"success": False, "message": f"Error: {e}", "is_on_whatsapp": False}
 
 
-def get_profile_picture(jid: str) -> Dict[str, Any]:
+def get_profile_picture(jid: str) -> dict[str, Any]:
     """Get profile picture URL via Go bridge."""
     try:
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/contacts/profile-picture",
             params={"jid": jid},
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -529,13 +538,13 @@ def get_profile_picture(jid: str) -> Dict[str, Any]:
         return {"success": False, "message": f"Error: {e}"}
 
 
-def update_profile_picture(image_path: str) -> Tuple[bool, str]:
+def update_profile_picture(image_path: str) -> tuple[bool, str]:
     """Update own profile picture via Go bridge."""
     try:
         response = requests.put(
             f"{GO_BRIDGE_URL}/api/profile/picture",
             json={"image_path": image_path},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -544,13 +553,13 @@ def update_profile_picture(image_path: str) -> Tuple[bool, str]:
         return False, f"Error updating profile picture: {e}"
 
 
-def get_contact_status(jid: str) -> Dict[str, Any]:
+def get_contact_status(jid: str) -> dict[str, Any]:
     """Get contact status message via Go bridge."""
     try:
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/contacts/status",
             params={"jid": jid},
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -559,13 +568,13 @@ def get_contact_status(jid: str) -> Dict[str, Any]:
         return {"success": False, "message": f"Error: {e}"}
 
 
-def update_profile_status(status_text: str) -> Tuple[bool, str]:
+def update_profile_status(status_text: str) -> tuple[bool, str]:
     """Update own status message via Go bridge."""
     try:
         response = requests.put(
             f"{GO_BRIDGE_URL}/api/profile/status",
             json={"status_text": status_text},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -574,12 +583,12 @@ def update_profile_status(status_text: str) -> Tuple[bool, str]:
         return False, f"Error updating status: {e}"
 
 
-def get_linked_devices() -> Dict[str, Any]:
+def get_linked_devices() -> dict[str, Any]:
     """Get linked WhatsApp devices via Go bridge."""
     try:
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/contacts/linked-devices",
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -592,7 +601,7 @@ def get_linked_devices() -> Dict[str, Any]:
 # T049: Privacy MCP Tools - HTTP clients for Go bridge
 # ============================================================================
 
-def block_contact(jid: Optional[str] = None, phone: Optional[str] = None) -> Tuple[bool, str]:
+def block_contact(jid: str | None = None, phone: str | None = None) -> tuple[bool, str]:
     """Block a contact via Go bridge."""
     try:
         payload = {}
@@ -604,7 +613,7 @@ def block_contact(jid: Optional[str] = None, phone: Optional[str] = None) -> Tup
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/privacy/block",
             json=payload,
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -613,7 +622,7 @@ def block_contact(jid: Optional[str] = None, phone: Optional[str] = None) -> Tup
         return False, f"Error blocking contact: {e}"
 
 
-def unblock_contact(jid: Optional[str] = None, phone: Optional[str] = None) -> Tuple[bool, str]:
+def unblock_contact(jid: str | None = None, phone: str | None = None) -> tuple[bool, str]:
     """Unblock a contact via Go bridge."""
     try:
         payload = {}
@@ -625,7 +634,7 @@ def unblock_contact(jid: Optional[str] = None, phone: Optional[str] = None) -> T
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/privacy/unblock",
             json=payload,
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -634,12 +643,12 @@ def unblock_contact(jid: Optional[str] = None, phone: Optional[str] = None) -> T
         return False, f"Error unblocking contact: {e}"
 
 
-def get_blocked_contacts() -> Dict[str, Any]:
+def get_blocked_contacts() -> dict[str, Any]:
     """Get list of blocked contacts via Go bridge."""
     try:
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/privacy/blocked",
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -648,12 +657,12 @@ def get_blocked_contacts() -> Dict[str, Any]:
         return {"success": False, "message": f"Error: {e}", "blocked": [], "count": 0}
 
 
-def get_privacy_settings() -> Dict[str, Any]:
+def get_privacy_settings() -> dict[str, Any]:
     """Get all privacy settings via Go bridge."""
     try:
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/privacy/settings",
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -662,7 +671,7 @@ def get_privacy_settings() -> Dict[str, Any]:
         return {"success": False, "message": f"Error: {e}", "settings": {}}
 
 
-def update_last_seen_privacy(value: str) -> Tuple[bool, str]:
+def update_last_seen_privacy(value: str) -> tuple[bool, str]:
     """Update last seen privacy setting via Go bridge.
 
     Args:
@@ -672,7 +681,7 @@ def update_last_seen_privacy(value: str) -> Tuple[bool, str]:
         response = requests.put(
             f"{GO_BRIDGE_URL}/api/privacy/last-seen",
             json={"value": value},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -681,7 +690,7 @@ def update_last_seen_privacy(value: str) -> Tuple[bool, str]:
         return False, f"Error updating last seen privacy: {e}"
 
 
-def update_profile_picture_privacy(value: str) -> Tuple[bool, str]:
+def update_profile_picture_privacy(value: str) -> tuple[bool, str]:
     """Update profile picture privacy setting via Go bridge.
 
     Args:
@@ -691,7 +700,7 @@ def update_profile_picture_privacy(value: str) -> Tuple[bool, str]:
         response = requests.put(
             f"{GO_BRIDGE_URL}/api/privacy/profile-picture",
             json={"value": value},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -700,7 +709,7 @@ def update_profile_picture_privacy(value: str) -> Tuple[bool, str]:
         return False, f"Error updating profile picture privacy: {e}"
 
 
-def update_status_privacy(value: str) -> Tuple[bool, str]:
+def update_status_privacy(value: str) -> tuple[bool, str]:
     """Update status privacy setting via Go bridge.
 
     Args:
@@ -710,7 +719,7 @@ def update_status_privacy(value: str) -> Tuple[bool, str]:
         response = requests.put(
             f"{GO_BRIDGE_URL}/api/privacy/status",
             json={"value": value},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -719,7 +728,7 @@ def update_status_privacy(value: str) -> Tuple[bool, str]:
         return False, f"Error updating status privacy: {e}"
 
 
-def update_online_privacy(value: str) -> Tuple[bool, str]:
+def update_online_privacy(value: str) -> tuple[bool, str]:
     """Update online privacy setting via Go bridge.
 
     Args:
@@ -729,7 +738,7 @@ def update_online_privacy(value: str) -> Tuple[bool, str]:
         response = requests.put(
             f"{GO_BRIDGE_URL}/api/privacy/online",
             json={"value": value},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -742,7 +751,7 @@ def update_online_privacy(value: str) -> Tuple[bool, str]:
 # T053: Business MCP Tools - HTTP client for Go bridge
 # ============================================================================
 
-def get_business_profile(jid: str) -> Dict[str, Any]:
+def get_business_profile(jid: str) -> dict[str, Any]:
     """Get business profile information via Go bridge.
 
     Args:
@@ -754,7 +763,7 @@ def get_business_profile(jid: str) -> Dict[str, Any]:
     try:
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/business/{jid}/profile",
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -767,7 +776,7 @@ def get_business_profile(jid: str) -> Dict[str, Any]:
 # T055: Newsletter MCP Tools - HTTP clients for Go bridge
 # ============================================================================
 
-def subscribe_to_newsletter(jid: str) -> Tuple[bool, str]:
+def subscribe_to_newsletter(jid: str) -> tuple[bool, str]:
     """Subscribe to a newsletter via Go bridge.
 
     Args:
@@ -779,7 +788,7 @@ def subscribe_to_newsletter(jid: str) -> Tuple[bool, str]:
     try:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/newsletters/{jid}/subscribe",
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -788,7 +797,7 @@ def subscribe_to_newsletter(jid: str) -> Tuple[bool, str]:
         return False, f"Error subscribing to newsletter: {e}"
 
 
-def unsubscribe_from_newsletter(jid: str) -> Tuple[bool, str]:
+def unsubscribe_from_newsletter(jid: str) -> tuple[bool, str]:
     """Unsubscribe from a newsletter via Go bridge.
 
     Args:
@@ -800,7 +809,7 @@ def unsubscribe_from_newsletter(jid: str) -> Tuple[bool, str]:
     try:
         response = requests.delete(
             f"{GO_BRIDGE_URL}/api/newsletters/{jid}/subscribe",
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()
@@ -809,7 +818,7 @@ def unsubscribe_from_newsletter(jid: str) -> Tuple[bool, str]:
         return False, f"Error unsubscribing from newsletter: {e}"
 
 
-def create_newsletter(name: str, description: str = "") -> Dict[str, Any]:
+def create_newsletter(name: str, description: str = "") -> dict[str, Any]:
     """Create a new newsletter via Go bridge.
 
     Args:
@@ -827,7 +836,7 @@ def create_newsletter(name: str, description: str = "") -> Dict[str, Any]:
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/newsletters/create",
             json=payload,
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -836,7 +845,7 @@ def create_newsletter(name: str, description: str = "") -> Dict[str, Any]:
         return {"success": False, "message": f"Error: {e}", "jid": None}
 
 
-def get_newsletter_metadata(jid: str) -> Dict[str, Any]:
+def get_newsletter_metadata(jid: str) -> dict[str, Any]:
     """Get newsletter metadata via Go bridge.
 
     Args:
@@ -848,7 +857,7 @@ def get_newsletter_metadata(jid: str) -> Dict[str, Any]:
     try:
         response = requests.get(
             f"{GO_BRIDGE_URL}/api/newsletters/{jid}",
-            timeout=10
+            timeout=SHORT_TIMEOUT
         )
         response.raise_for_status()
         return response.json()
@@ -857,7 +866,7 @@ def get_newsletter_metadata(jid: str) -> Dict[str, Any]:
         return {"success": False, "message": f"Error: {e}", "newsletter": None}
 
 
-def react_to_newsletter_message(jid: str, message_id: str, emoji: str) -> Tuple[bool, str]:
+def react_to_newsletter_message(jid: str, message_id: str, emoji: str) -> tuple[bool, str]:
     """React to a newsletter message via Go bridge.
 
     Args:
@@ -872,7 +881,7 @@ def react_to_newsletter_message(jid: str, message_id: str, emoji: str) -> Tuple[
         response = requests.post(
             f"{GO_BRIDGE_URL}/api/newsletters/{jid}/messages/{message_id}/react",
             json={"emoji": emoji},
-            timeout=30
+            timeout=DEFAULT_TIMEOUT
         )
         response.raise_for_status()
         data = response.json()

@@ -1,0 +1,181 @@
+# Contracts: Code Quality and Maintainability Improvements
+
+**Feature**: Code Quality and Maintainability Improvements
+**Branch**: `003-improve-code-quality`
+**Date**: 2025-10-12
+
+## Overview
+
+This directory contains **configuration contracts** that define the expected behavior of code quality tools and the structure of refactored code. These contracts serve as the technical specification for implementation.
+
+Unlike traditional API contracts (OpenAPI/GraphQL schemas), these contracts define:
+- Tool configurations (mypy, ruff, pytest)
+- Code structure templates (constants, packages, docstrings)
+- Validation criteria for success
+
+## Contract Files
+
+### 1. `pyproject.toml.template`
+
+**Purpose**: Configuration contract for mypy and ruff
+**Enforces**: FR-012 to FR-025 (Type Checking and Linting)
+**Success Criteria**: SC-007 to SC-015
+
+**Key Sections**:
+- Mypy strict mode configuration
+- Ruff rule selection (E, F, I, N, W, UP, C90, D, RUF)
+- McCabe complexity limit (max-complexity = 10)
+- Google-style docstring validation
+- Import sorting configuration
+
+**Usage**:
+```bash
+# Merge with existing unified-mcp/pyproject.toml
+# Then validate:
+mypy src/ --strict        # Should exit with code 0
+ruff check .              # Should exit with code 0
+```
+
+### 2. `constants.py.template`
+
+**Purpose**: Template for centralized constants module
+**Enforces**: FR-006 to FR-010 (Constants Management)
+**Success Criteria**: SC-004 to SC-006
+
+**Key Features**:
+- `typing.Final` for immutability
+- Organized by category (timeouts, URLs, retry, health)
+- Comprehensive docstrings explaining rationale
+- Executable examples in docstrings
+
+**Usage**:
+```bash
+# Create unified-mcp/constants.py from this template
+# Replace all hardcoded values in codebase with imports:
+# from unified_mcp.constants import DEFAULT_TIMEOUT
+```
+
+### 3. `__init__.py.template`
+
+**Purpose**: Template for package initialization files
+**Enforces**: FR-001 to FR-005 (Package Structure)
+**Success Criteria**: SC-001 to SC-003
+
+**Key Features**:
+- Package-relative imports pattern
+- Public API exports via `__all__`
+- Module-level docstrings
+- Examples of proper import structure
+
+**Usage**:
+```bash
+# Create __init__.py files in:
+# - unified-mcp/__init__.py
+# - unified-mcp/backends/__init__.py
+# - unified-mcp/models/__init__.py (if needed)
+
+# Verify with:
+python -m unified_mcp.main    # Should run without errors
+```
+
+### 4. `docstring.example.py`
+
+**Purpose**: Complete examples of Google-style docstrings
+**Enforces**: FR-021 to FR-025 (Documentation)
+**Success Criteria**: SC-013 to SC-015
+
+**Key Features**:
+- Function docstrings with all sections (Args, Returns, Raises, Examples)
+- Class docstrings with attributes and usage
+- Executable examples for doctest
+- Integration with type hints
+
+**Usage**:
+```bash
+# Use as reference when writing docstrings
+# Validate with:
+ruff check --select D .        # Check completeness
+pytest --doctest-modules .     # Test examples
+```
+
+## Validation Workflow
+
+Each contract maps to specific functional requirements and success criteria:
+
+**Phase 1: Package Structure** (US1)
+```bash
+# Apply: __init__.py.template
+# Validate: SC-001, SC-002, SC-003
+python -m unified_mcp.main
+pytest
+```
+
+**Phase 2: Constants** (US2)
+```bash
+# Apply: constants.py.template
+# Validate: SC-004, SC-005, SC-006
+grep -r "timeout=30" src/  # Should return zero matches
+```
+
+**Phase 3: Type Checking** (US3)
+```bash
+# Apply: pyproject.toml.template (mypy section)
+# Validate: SC-007, SC-008, SC-009
+mypy src/ --strict
+```
+
+**Phase 4: Linting** (US4)
+```bash
+# Apply: pyproject.toml.template (ruff section)
+# Validate: SC-010, SC-011, SC-012
+ruff check .
+```
+
+**Phase 5: Documentation** (US5)
+```bash
+# Apply: docstring.example.py patterns
+# Validate: SC-013, SC-014, SC-015
+ruff check --select D .
+pytest --doctest-modules src/
+```
+
+## Functional Requirements Mapping
+
+| Contract File | Enforces FRs | Success Criteria |
+|---------------|--------------|------------------|
+| `__init__.py.template` | FR-001 to FR-005 | SC-001 to SC-003 |
+| `constants.py.template` | FR-006 to FR-010 | SC-004 to SC-006 |
+| `pyproject.toml.template` (mypy) | FR-012 to FR-015 | SC-007 to SC-009 |
+| `pyproject.toml.template` (ruff) | FR-016 to FR-020 | SC-010 to SC-012 |
+| `docstring.example.py` | FR-021 to FR-025 | SC-013 to SC-015 |
+
+## Integration with CI/CD
+
+After implementation, these contracts will be enforced in CI/CD pipeline (Feature 002):
+
+```yaml
+# .github/workflows/ci.yml (code-quality job)
+- name: Type check
+  run: mypy src/ --strict
+
+- name: Lint check
+  run: ruff check .
+
+- name: Test docstrings
+  run: pytest --doctest-modules src/
+```
+
+This ensures all quality gates are automated and blocking for merges.
+
+## Next Steps
+
+After reviewing contracts:
+1. Proceed to `quickstart.md` for implementation guide
+2. Follow task breakdown in `tasks.md` (generated by `/speckit.tasks`)
+3. Implement incrementally, validating each phase with contract criteria
+4. All 101 existing tests must pass throughout refactoring
+
+---
+
+**Status**: Ready for implementation
+**Generated**: Phase 1 of `/speckit.plan` command

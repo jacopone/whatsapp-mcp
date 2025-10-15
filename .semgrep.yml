@@ -1,0 +1,115 @@
+# Semgrep Security Rules for WhatsApp MCP Project
+# OWASP Top 10 and security best practices
+
+rules:
+  # SQL Injection Prevention
+  - id: sql-injection-risk
+    pattern-either:
+      - pattern: $DB.query($SQL + $USER_INPUT)
+      - pattern: $DB.exec($SQL + $USER_INPUT)
+      - pattern: $DB.run($SQL + $USER_INPUT)
+    message: |
+      Potential SQL injection vulnerability detected.
+      Use parameterized queries or prepared statements instead.
+    languages: [python, javascript, typescript, go]
+    severity: ERROR
+
+  # Command Injection Prevention
+  - id: command-injection-risk
+    pattern-either:
+      - pattern: exec($CMD + $USER_INPUT)
+      - pattern: eval($USER_INPUT)
+      - pattern: os.system($CMD + $USER_INPUT)
+      - pattern: subprocess.call($CMD + $USER_INPUT, shell=True)
+    message: |
+      Potential command injection vulnerability detected.
+      Avoid concatenating user input into shell commands.
+    languages: [python, javascript, typescript]
+    severity: ERROR
+
+  # Path Traversal Prevention
+  - id: path-traversal-risk
+    pattern-either:
+      - pattern: open($PATH + $USER_INPUT)
+      - pattern: fs.readFile($PATH + $USER_INPUT)
+      - pattern: os.Open($PATH + $USER_INPUT)
+    message: |
+      Potential path traversal vulnerability detected.
+      Validate and sanitize file paths before use.
+    languages: [python, javascript, typescript, go]
+    severity: ERROR
+
+  # Hardcoded Secrets
+  - id: hardcoded-secret
+    pattern-either:
+      - pattern: |
+          $VAR = "... password ..."
+      - pattern: |
+          $VAR = "... token ..."
+      - pattern: |
+          $VAR = "... api_key ..."
+      - pattern: |
+          $VAR = "... secret ..."
+    message: |
+      Potential hardcoded secret detected.
+      Use environment variables or secret management instead.
+    languages: [python, javascript, typescript, go]
+    severity: WARNING
+
+  # Insecure Random Number Generation
+  - id: insecure-random
+    pattern-either:
+      - pattern: random.random()
+      - pattern: Math.random()
+    message: |
+      Insecure random number generator for security-sensitive operations.
+      Use cryptographically secure random (e.g., secrets module in Python).
+    languages: [python, javascript, typescript]
+    severity: WARNING
+
+  # Missing Input Validation
+  - id: missing-input-validation
+    pattern: |
+      def $FUNC($PARAM):
+        ...
+        $DB.query(...)
+    message: |
+      Function performs database operation without apparent input validation.
+      Ensure all user inputs are validated before use.
+    languages: [python]
+    severity: INFO
+
+  # Insecure Deserialization
+  - id: insecure-deserialization
+    pattern-either:
+      - pattern: pickle.loads($USER_INPUT)
+      - pattern: yaml.load($USER_INPUT)
+      - pattern: eval($USER_INPUT)
+    message: |
+      Insecure deserialization detected.
+      Never deserialize untrusted data.
+    languages: [python]
+    severity: ERROR
+
+  # Missing Authentication Check
+  - id: missing-auth-check
+    pattern: |
+      @app.route(...)
+      def $FUNC(...):
+        ...
+    message: |
+      API endpoint may be missing authentication check.
+      Ensure sensitive endpoints require authentication.
+    languages: [python]
+    severity: INFO
+
+  # Weak Cryptography
+  - id: weak-crypto
+    pattern-either:
+      - pattern: hashlib.md5(...)
+      - pattern: hashlib.sha1(...)
+    message: |
+      Weak cryptographic hash function detected (MD5/SHA1).
+      Use SHA-256 or better for security-sensitive operations.
+    languages: [python]
+    severity: WARNING
