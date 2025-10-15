@@ -54,11 +54,15 @@ func NewMessageStore() (*MessageStore, error) {
 		return nil, fmt.Errorf("failed to create store directory: %v", err)
 	}
 
-	// Open SQLite database for messages
-	db, err := sql.Open("sqlite3", "file:store/messages.db?_foreign_keys=on")
+	// Open SQLite database for messages with WAL mode for concurrent reads/writes
+	db, err := sql.Open("sqlite3", "file:store/messages.db?_foreign_keys=on&_journal_mode=WAL&_busy_timeout=5000")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open message database: %v", err)
 	}
+
+	// Configure connection pool for concurrent access
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
 
 	// Create tables if they don't exist
 	_, err = db.Exec(`
@@ -2125,10 +2129,13 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 				continue
 			}
 
-			// Parse timestamp strings
-			msg.Timestamp, _ = time.Parse("2006-01-02 15:04:05", timestampStr)
+			// Parse timestamp strings (SQLite returns RFC3339 format)
+			if t, err := time.Parse(time.RFC3339, timestampStr); err == nil {
+				msg.Timestamp = t
+			}
+
 			if readTimestampStr.Valid && readTimestampStr.String != "" {
-				if readTime, err := time.Parse("2006-01-02 15:04:05", readTimestampStr.String); err == nil {
+				if readTime, err := time.Parse(time.RFC3339, readTimestampStr.String); err == nil {
 					msg.ReadTimestamp = &readTime
 				}
 			}
@@ -2423,29 +2430,40 @@ func main() {
 		logger.Warnf("Failed to populate contacts: %v", err)
 	}
 
-	// Populate group participant information to resolve @lid IDs to real names
-	logger.Infof("Syncing group participant names...")
-	err = messageStore.PopulateGroupParticipants(client)
-	if err != nil {
-		logger.Warnf("Failed to populate group participants: %v", err)
-	}
+	// Start REST API server FIRST so the bridge is responsive immediately
+	logger.Infof("Starting REST API server on :8080...")
+	go startRESTServer(client, messageStore, 8080)
 
-	// Resync @lid entries with existing contacts
-	logger.Infof("Resyncing @lid entries with existing contacts...")
-	err = messageStore.ResyncLIDsWithContacts()
-	if err != nil {
-		logger.Warnf("Failed to resync @lid contacts: %v", err)
-	}
+	// Give the server a moment to start
+	time.Sleep(100 * time.Millisecond)
+	logger.Infof("REST API server started")
 
-	// Fix @lid mappings with wrong phone numbers
-	logger.Infof("Fixing @lid mappings with correct phone numbers...")
-	err = messageStore.FixLIDMappings(client)
-	if err != nil {
-		logger.Warnf("Failed to fix @lid mappings: %v", err)
-	}
+	// Do group participant sync in the background (can take several minutes with rate limiting)
+	go func() {
+		logger.Infof("Starting background sync of group participant names...")
 
-	// Start REST API server
-	startRESTServer(client, messageStore, 8080)
+		// Populate group participant information to resolve @lid IDs to real names
+		err := messageStore.PopulateGroupParticipants(client)
+		if err != nil {
+			logger.Warnf("Failed to populate group participants: %v", err)
+		}
+
+		// Resync @lid entries with existing contacts
+		logger.Infof("Resyncing @lid entries with existing contacts...")
+		err = messageStore.ResyncLIDsWithContacts()
+		if err != nil {
+			logger.Warnf("Failed to resync @lid contacts: %v", err)
+		}
+
+		// Fix @lid mappings with wrong phone numbers
+		logger.Infof("Fixing @lid mappings with correct phone numbers...")
+		err = messageStore.FixLIDMappings(client)
+		if err != nil {
+			logger.Warnf("Failed to fix @lid mappings: %v", err)
+		}
+
+		logger.Infof("Background group participant sync completed")
+	}()
 
 	// Create a channel to keep the main goroutine alive
 	exitChan := make(chan os.Signal, 1)

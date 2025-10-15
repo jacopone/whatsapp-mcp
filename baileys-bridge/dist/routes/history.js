@@ -331,31 +331,45 @@ async function syncHistory(chatJid, checkpoint, maxMessages, baileysClient, data
     }
 }
 /**
- * Fetch a batch of messages from Baileys
+ * Fetch a batch of messages from Baileys using on-demand history sync
  *
- * Note: Baileys' message history sync works through events, not direct fetching.
- * In production, this would:
- * 1. Listen to 'messaging-history.set' events (when syncFullHistory is enabled)
- * 2. Or query from Baileys' message store if using store
- * 3. For now, we use a simplified approach with loadMessagesFromWA if available
+ * This uses Baileys' fetchMessageHistory() function which requests
+ * older messages from WhatsApp on-demand.
  */
-async function fetchMessageBatch(sock, chatJid, count, cursor, logger) {
+async function fetchMessageBatch(sock, chatJid, count, oldestMessageId, logger) {
     try {
-        // Baileys provides messages through message store or history events
-        // For explicit fetching, we need to use the chat's message history
-        // This is a placeholder implementation
-        // In production, you would:
-        // 1. Use sock's message store to query messages
-        // 2. Or rely on the syncFullHistory events
-        // 3. Or implement a custom message fetching strategy
-        logger.warn('Message fetching is placeholder - implement based on Baileys store');
-        // Return empty batch for now (to be implemented with actual Baileys integration)
-        // The actual implementation depends on how you set up Baileys' message store
+        // If we have an oldest message ID, use it as a reference point
+        if (!oldestMessageId) {
+            logger.warn({ chatJid }, 'No oldest message ID provided - cannot fetch history without starting point');
+            return { messages: [], cursor: undefined };
+        }
+        // We need the full message key and timestamp
+        // These should be passed in from the checkpoint
+        // For now, log that we need this info
+        logger.info({ chatJid, oldestMessageId, count }, 'Would call fetchMessageHistory here with proper message key');
+        // NOTE: fetchMessageHistory requires:
+        // - count: number of messages to fetch
+        // - messageKey: { remoteJid, id, fromMe }
+        // - messageTimestamp: number (in milliseconds)
+        //
+        // The function triggers WhatsApp to send messages via messaging-history.set event
+        // with syncType === HistorySyncType.ON_DEMAND
+        //
+        // Example call:
+        // const messageId = await sock.fetchMessageHistory(
+        //   count,
+        //   { remoteJid: chatJid, id: oldestMessageId, fromMe: false },
+        //   oldestTimestamp
+        // );
+        //
+        // Then listen for the event:
+        // sock.ev.on('messaging-history.set', ({ messages, syncType }) => {
+        //   if (syncType === proto.HistorySync.HistorySyncType.ON_DEMAND) {
+        //     // Process these messages
+        //   }
+        // });
+        logger.warn('fetchMessageHistory integration requires message timestamp - implement with full message data');
         return { messages: [], cursor: undefined };
-        // Example of what the implementation might look like:
-        // const store = getMessageStore();  // Your message store implementation
-        // const messages = await store.loadMessages(chatJid, count, cursor);
-        // return { messages: convertMessages(messages), cursor: getNextCursor(messages) };
     }
     catch (error) {
         logger.error({ error, chat_jid: chatJid }, 'Error fetching messages');

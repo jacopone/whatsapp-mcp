@@ -41,6 +41,7 @@ func (store *MessageStore) PopulateGroupParticipants(client *whatsmeow.Client) e
 	totalParticipants := 0
 
 	// For each group, get participant information
+	// For each group, get participant information
 	for _, group := range groups {
 		// Parse the group JID
 		groupJID, err := types.ParseJID(group.JID)
@@ -58,13 +59,22 @@ func (store *MessageStore) PopulateGroupParticipants(client *whatsmeow.Client) e
 
 		// Process each participant
 		for _, participant := range groupInfo.Participants {
-			// The participant JID is the actual phone number
-			phoneJID := participant.JID.String()
-			phoneNumber := participant.JID.User  // This is the real phone number (e.g., 393485722640)
+			// Use the PhoneNumber field which contains the REAL phone JID!
+			phoneJID := participant.PhoneNumber.String()
+			phoneNumber := participant.PhoneNumber.User  // Real phone number (e.g., 393485722640)
 
 			// Get the participant's @lid ID for this group
-			// The @lid ID is derived from the participant's JID in the group context
 			lidID := participant.LID.String()
+
+			// Skip if no valid phone number
+			if phoneJID == "" || phoneNumber == "" {
+				fmt.Printf("Skipping participant with no phone number in group %s (LID: %s)\n",
+					group.Name, lidID)
+				continue
+			}
+
+			fmt.Printf("DEBUG Group %s - Phone: %s, LID: %s\n",
+				group.Name, phoneNumber, lidID)
 
 			// If we don't have a LID, try to construct it from existing patterns
 			if lidID == "" || lidID == "0@lid" {
@@ -108,7 +118,8 @@ func (store *MessageStore) PopulateGroupParticipants(client *whatsmeow.Client) e
 			var displayName string
 
 			// ALWAYS try to get the full name from WhatsApp contacts first (from address book)
-			contact, err := client.Store.Contacts.GetContact(context.Background(), participant.JID)
+			// Use PhoneNumber JID to query the contact store
+			contact, err := client.Store.Contacts.GetContact(context.Background(), participant.PhoneNumber)
 			if err == nil && contact.FullName != "" {
 				displayName = contact.FullName
 				fmt.Printf("Using WhatsApp address book name: %s for participant\n", displayName)
@@ -188,11 +199,17 @@ func (store *MessageStore) FixLIDMappings(client *whatsmeow.Client) error {
 		// Process participants to fix mappings
 		for _, participant := range groupInfo.Participants {
 			lidID := participant.LID.String()
-			actualPhoneNumber := participant.JID.User
+			actualPhoneNumber := participant.PhoneNumber.User
+			phoneJID := participant.PhoneNumber.String()
+
+			// Skip if no phone number available
+			if phoneJID == "" || actualPhoneNumber == "" {
+				continue
+			}
 
 			if lidID != "" && lidID != "0@lid" {
-				// Get the full name from WhatsApp address book
-				contact, err := client.Store.Contacts.GetContact(context.Background(), participant.JID)
+				// Get the full name from WhatsApp address book using the REAL phone JID
+				contact, err := client.Store.Contacts.GetContact(context.Background(), participant.PhoneNumber)
 				var fullName string
 
 				if err == nil && contact.FullName != "" {
@@ -339,14 +356,14 @@ func (store *MessageStore) ResolveGroupMemberName(lidID string, groupJID string,
 				for _, participant := range groupInfo.Participants {
 					// Check if this might be the participant
 					if participant.LID.String() == lidID {
-						// Found exact match
-						contact, _ := client.Store.Contacts.GetContact(context.Background(), participant.JID)
+						// Found exact match - use PhoneNumber to get contact
+						contact, _ := client.Store.Contacts.GetContact(context.Background(), participant.PhoneNumber)
 						if contact.FullName != "" {
 							// Store for future use
 							store.db.Exec(`
 								INSERT OR REPLACE INTO contacts (jid, name, phone_number)
 								VALUES (?, ?, ?)
-							`, lidID, contact.FullName, participant.JID.User)
+							`, lidID, contact.FullName, participant.PhoneNumber.User)
 							return contact.FullName
 						}
 					}
