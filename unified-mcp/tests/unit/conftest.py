@@ -274,23 +274,8 @@ def mock_time(monkeypatch):
     return mock
 
 
-@pytest.fixture(autouse=True)
-def reset_responses():
-    """Automatically reset responses state before each test.
-
-    This fixture ensures responses library state is cleaned between test runs,
-    preventing state pollution especially with pytest-rerunfailures.
-
-    Critical for CI where tests are retried multiple times (--reruns 3).
-
-    Note: Only calls reset(), not start()/stop(), because tests use
-    @responses.activate decorator which handles activation lifecycle.
-    Calling both causes double-activation conflicts on retries.
-    """
-    # Reset responses state before test (decorator handles start/stop)
-    responses.reset()
-
-    yield
-
-    # Clean up after test (decorator handles start/stop)
-    responses.reset()
+# Note: Removed autouse reset_responses fixture
+# The @responses.activate decorator already handles all lifecycle:
+# - start() on entry
+# - stop() + reset() on exit
+# Having an autouse fixture interferes with pytest-rerunfailures retries
