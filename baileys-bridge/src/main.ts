@@ -108,6 +108,11 @@ async function connectToWhatsApp() {
   sock.ev.on('messaging-history.set', async ({ chats, contacts, messages, isLatest, progress, syncType }) => {
     logger.info(`📥 Receiving history sync: ${chats.length} chats, ${messages.length} messages (progress: ${progress}%, isLatest: ${isLatest}, type: ${syncType})`);
 
+    // Detect ON_DEMAND history sync (from fetchMessageHistory)
+    if (syncType === proto.HistorySync.HistorySyncType.ON_DEMAND) {
+      logger.info(`🎯 ON-DEMAND history sync - ${messages.length} older messages retrieved`);
+    }
+
     updateSyncStatus({
       is_syncing: true,
       progress_percent: progress || 0,
@@ -254,6 +259,72 @@ app.post('/api/clear', (req, res) => {
   }
 });
 
+// Deep History Fetch Endpoint - Fetch messages from 2010-2015 era
+app.post('/api/history/fetch-older', async (req, res) => {
+  if (!sock || !isConnected) {
+    return res.status(503).json({
+      success: false,
+      message: 'Not connected to WhatsApp'
+    });
+  }
+
+  const {
+    chat_jid,
+    oldest_message_id,
+    oldest_timestamp_ms,
+    from_me = false,
+    count = 100
+  } = req.body;
+
+  // Validation
+  if (!chat_jid || !oldest_message_id || !oldest_timestamp_ms) {
+    return res.status(400).json({
+      success: false,
+      message: 'Required: chat_jid, oldest_message_id, oldest_timestamp_ms'
+    });
+  }
+
+  try {
+    // Build message key
+    const messageKey = {
+      remoteJid: chat_jid,
+      id: oldest_message_id,
+      fromMe: from_me
+    };
+
+    // Request older messages from WhatsApp
+    logger.info({
+      chat_jid,
+      oldest_message_id,
+      oldest_timestamp_ms,
+      count
+    }, '📥 Requesting older messages via fetchMessageHistory');
+
+    const requestId = await sock.fetchMessageHistory(
+      count,
+      messageKey,
+      oldest_timestamp_ms
+    );
+
+    logger.info({ requestId }, '✓ History fetch request sent');
+
+    res.json({
+      success: true,
+      message: `Requested ${count} older messages for ${chat_jid}`,
+      request_id: requestId,
+      info: 'Messages will arrive via messaging-history.set event with syncType=ON_DEMAND'
+    });
+
+  } catch (error) {
+    logger.error({ error }, 'Error requesting older messages');
+    res.status(500).json({
+      success: false,
+      message: 'Failed to request older messages',
+      error: String(error)
+    });
+  }
+});
+
 // Register poll routes
 const pollRouter = Router();
 registerPollRoutes(pollRouter, () => sock);
@@ -284,7 +355,7 @@ app.listen(PORT, () => {
 
   // Connect to WhatsApp
   connectToWhatsApp().catch(error => {
-    logger.error('Failed to connect to WhatsApp:', error);
+    logger.error({ error }, 'Failed to connect to WhatsApp');
     process.exit(1);
   });
 });
