@@ -46,8 +46,15 @@ addopts = "-v --strict-markers --timeout=10 --reruns 3 --reruns-delay 1 --doctes
 
 [tool.coverage.run]
 branch = true
-source = ["."]
-omit = ["*/tests/*", "*/test_*.py"]
+source = ["backends"]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "**/__pycache__/**",
+    "**/htmlcov/**",
+    "*/baileys_client.py",  # Integration-tested, not unit-tested
+    "*/go_client.py",       # Integration-tested, not unit-tested
+]
 concurrency = ["thread"]
 
 [tool.coverage.report]
