@@ -282,13 +282,15 @@ def reset_responses():
     preventing state pollution especially with pytest-rerunfailures.
 
     Critical for CI where tests are retried multiple times (--reruns 3).
+
+    Note: Only calls reset(), not start()/stop(), because tests use
+    @responses.activate decorator which handles activation lifecycle.
+    Calling both causes double-activation conflicts on retries.
     """
-    # Reset responses state before test
+    # Reset responses state before test (decorator handles start/stop)
     responses.reset()
-    responses.start()
 
     yield
 
-    # Clean up after test
-    responses.stop()
+    # Clean up after test (decorator handles start/stop)
     responses.reset()
