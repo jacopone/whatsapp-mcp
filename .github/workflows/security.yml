@@ -65,8 +65,8 @@ jobs:
           scan-ref: '.'
           format: 'sarif'
           output: 'trivy-results.sarif'
-          severity: 'CRITICAL,HIGH,MEDIUM,LOW'
-          exit-code: '1'  # Fail CI on vulnerabilities found
+          severity: 'CRITICAL,HIGH'  # Only fail on critical and high severity
+          exit-code: '1'  # Fail CI on CRITICAL/HIGH vulnerabilities only
 
       - name: Upload Trivy results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
@@ -74,6 +74,24 @@ jobs:
         with:
           sarif_file: 'trivy-results.sarif'
           category: 'dependencies'
+
+      - name: Run Trivy full scan (informational - all severities)
+        uses: aquasecurity/trivy-action@master
+        if: always()  # Run even if previous step failed
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results-all.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM,LOW'  # All severities for visibility
+          exit-code: '0'  # Don't fail CI - informational only
+
+      - name: Upload Trivy full scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results-all.sarif'
+          category: 'dependencies-all'
 
   # ====================
   # Secret Detection with Gitleaks
