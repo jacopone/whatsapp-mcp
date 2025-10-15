@@ -33,8 +33,8 @@ yarn-error.log
 whatsapp-bridge/whatsapp-bridge
 whatsapp-bridge/whatsapp-bridge.exe
 
-# TypeScript build artifacts (optional - might need for deployment)
-# baileys-bridge/dist/
+# TypeScript build artifacts (generated from source, should not be tracked)
+baileys-bridge/dist/
 
 # Temporary and backup files
 *.swp
