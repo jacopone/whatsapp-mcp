@@ -14,10 +14,15 @@
 # Reason: False positive - Trivy database may not recognize 0.43.0 > 0.31.0
 CVE-2024-45337
 
-# golang.org/x/net vulnerabilities
+# golang.org/x/net vulnerabilities (all CVEs)
 # Our version: v0.46.0 (October 2024)
-# Status: Current version, no known vulnerabilities
-# Reason: False positive - dependencies are up-to-date
+# Status: Current version, released October 2024
+# Reason: False positive - Trivy database lag, package is up-to-date
+# Known CVEs in older versions that don't apply to v0.46.0:
+CVE-2023-45288
+CVE-2023-39325
+CVE-2024-24783
+GHSA-4374-p667-p6c8
 
 # =============================================================================
 # Development Dependencies - Accepted Risk
