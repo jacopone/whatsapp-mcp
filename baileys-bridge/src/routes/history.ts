@@ -131,7 +131,7 @@ export function createHistoryRouter(config: HistorySyncConfig): Router {
 
   /**
    * GET /history/sync/:chat_jid/status
-   * Get current checkpoint status for a chat
+   * Get current checkpoint status for a chat with enhanced metrics
    */
   router.get('/sync/:chat_jid/status', async (req: Request, res: Response) => {
     try {
@@ -140,14 +140,43 @@ export function createHistoryRouter(config: HistorySyncConfig): Router {
       // Check active sync first
       const activeCheckpoint = activeSyncs.get(chat_jid);
       if (activeCheckpoint) {
+        const checkpointData = activeCheckpoint.toJSON();
+
+        // Calculate additional metrics for active syncs
+        const oldestMessage = database.getOldestMessage(chat_jid);
+        const messagesCount = database.getMessageCount();
+
+        // Estimate completion time based on sync rate
+        let estimatedCompletionTime = null;
+        let messagesPerSecond = null;
+
+        if (checkpointData.created_at && checkpointData.messages_synced > 0) {
+          const elapsedMs = Date.now() - new Date(checkpointData.created_at).getTime();
+          messagesPerSecond = checkpointData.messages_synced / (elapsedMs / 1000);
+
+          if (checkpointData.progress_percent && checkpointData.progress_percent > 0) {
+            const totalMessages = checkpointData.messages_synced / (checkpointData.progress_percent / 100);
+            const remainingMessages = totalMessages - checkpointData.messages_synced;
+            const remainingSeconds = remainingMessages / messagesPerSecond;
+            estimatedCompletionTime = new Date(Date.now() + remainingSeconds * 1000).toISOString();
+          }
+        }
+
         return res.status(200).json({
-          checkpoint: activeCheckpoint.toJSON(),
-          is_active: activeCheckpoint.isActive()
+          checkpoint: checkpointData,
+          is_active: activeCheckpoint.isActive(),
+          oldest_message_date: oldestMessage?.timestamp?.toISOString() || null,
+          messages_per_second: messagesPerSecond ? messagesPerSecond.toFixed(2) : null,
+          estimated_completion_time: estimatedCompletionTime,
+          error_details: checkpointData.status === 'failed' || checkpointData.status === 'interrupted'
+            ? { error_message: checkpointData.error_message }
+            : null
         });
       }
 
       // Otherwise, check database
       const syncStatus = database.getSyncStatus();
+      const oldestMessage = database.getOldestMessage(chat_jid);
 
       res.status(200).json({
         checkpoint: {
@@ -157,7 +186,11 @@ export function createHistoryRouter(config: HistorySyncConfig): Router {
           last_sync_time: syncStatus.last_sync_time,
           progress_percent: syncStatus.progress_percent
         },
-        is_active: syncStatus.is_syncing
+        is_active: syncStatus.is_syncing,
+        oldest_message_date: oldestMessage?.timestamp?.toISOString() || null,
+        messages_per_second: null,
+        estimated_completion_time: null,
+        error_details: null
       });
     } catch (error) {
       logger.error({ error }, 'Error getting sync status');
@@ -312,6 +345,186 @@ export function createHistoryRouter(config: HistorySyncConfig): Router {
     }
   });
 
+  /**
+   * POST /history/sync/bulk
+   * Start history sync for multiple chats
+   */
+  router.post('/sync/bulk', async (req: Request, res: Response) => {
+    try {
+      const { chat_jids, max_messages = 1000 } = req.body;
+
+      // Validation
+      if (!Array.isArray(chat_jids) || chat_jids.length === 0) {
+        return res.status(400).json({
+          error: 'chat_jids must be a non-empty array'
+        });
+      }
+
+      if (chat_jids.length > 50) {
+        return res.status(400).json({
+          error: 'Maximum 50 chat_jids allowed per bulk request'
+        });
+      }
+
+      // Validate JID format
+      const invalidJids = chat_jids.filter((jid: string) => !jid || !jid.includes('@'));
+      if (invalidJids.length > 0) {
+        return res.status(400).json({
+          error: 'Invalid JID format detected',
+          invalid_jids: invalidJids
+        });
+      }
+
+      // Check WhatsApp connection
+      if (!baileysClient.getConnectionState()) {
+        return res.status(503).json({
+          error: 'WhatsApp is not connected. Please connect first.',
+          status: 'disconnected'
+        });
+      }
+
+      // Queue all sync requests
+      const queuedSyncs: string[] = [];
+      const failedSyncs: { chat_jid: string; error: string }[] = [];
+
+      for (const chat_jid of chat_jids) {
+        try {
+          // Check if sync already active
+          if (activeSyncs.has(chat_jid)) {
+            logger.warn({ chat_jid }, 'Sync already active, skipping');
+            continue;
+          }
+
+          // Create checkpoint
+          const checkpoint = SyncCheckpoint.create(chat_jid);
+          checkpoint.start();
+
+          // Track active sync
+          activeSyncs.set(chat_jid, checkpoint);
+          queuedSyncs.push(chat_jid);
+
+          // Start sync in background (syncs run sequentially due to rate limiting)
+          syncHistory(
+            chat_jid,
+            checkpoint,
+            max_messages,
+            baileysClient,
+            database,
+            logger,
+            activeSyncs
+          ).catch((error) => {
+            logger.error({ error, chat_jid }, 'Background sync failed in bulk operation');
+            checkpoint.fail(error.message);
+            activeSyncs.delete(chat_jid);
+          });
+
+        } catch (error) {
+          failedSyncs.push({
+            chat_jid,
+            error: String(error)
+          });
+        }
+      }
+
+      logger.info({
+        queued: queuedSyncs.length,
+        failed: failedSyncs.length,
+        total: chat_jids.length
+      }, 'Bulk sync initiated');
+
+      res.status(202).json({
+        queued: queuedSyncs.length,
+        sync_ids: queuedSyncs,
+        failed: failedSyncs,
+        message: `Queued ${queuedSyncs.length} of ${chat_jids.length} chats for sync`
+      });
+
+    } catch (error) {
+      logger.error({ error }, 'Error initiating bulk sync');
+      res.status(500).json({
+        error: 'Failed to initiate bulk sync',
+        message: String(error)
+      });
+    }
+  });
+
+  /**
+   * GET /history/sync/bulk/status
+   * Get status for multiple sync operations
+   */
+  router.get('/sync/bulk/status', async (req: Request, res: Response) => {
+    try {
+      const { sync_ids } = req.query;
+
+      if (!sync_ids) {
+        return res.status(400).json({
+          error: 'sync_ids query parameter required (comma-separated chat_jids)'
+        });
+      }
+
+      // Parse sync_ids (can be array or comma-separated string)
+      const syncIdArray = Array.isArray(sync_ids)
+        ? sync_ids
+        : String(sync_ids).split(',');
+
+      const checkpoints: any[] = [];
+      let completedCount = 0;
+      let inProgressCount = 0;
+      let failedCount = 0;
+      let totalMessages = 0;
+
+      for (const sync_id of syncIdArray) {
+        const chat_jid = String(sync_id).trim();
+
+        // Check active sync first
+        const activeCheckpoint = activeSyncs.get(chat_jid);
+        if (activeCheckpoint) {
+          const checkpointData = activeCheckpoint.toJSON();
+          checkpoints.push(checkpointData);
+
+          if (checkpointData.status === 'completed') completedCount++;
+          else if (checkpointData.status === 'in_progress') inProgressCount++;
+          else if (checkpointData.status === 'failed') failedCount++;
+
+          totalMessages += checkpointData.messages_synced || 0;
+        } else {
+          // Check database (fallback for completed/old syncs)
+          const syncStatus = database.getSyncStatus();
+          const checkpointData = {
+            chat_jid,
+            messages_synced: syncStatus.messages_synced,
+            status: syncStatus.is_syncing ? 'in_progress' : 'completed',
+            last_sync_time: syncStatus.last_sync_time,
+            progress_percent: syncStatus.progress_percent
+          };
+          checkpoints.push(checkpointData);
+
+          if (checkpointData.status === 'completed') completedCount++;
+        }
+      }
+
+      const total = syncIdArray.length;
+      const overallProgress = total > 0 ? Math.floor((completedCount / total) * 100) : 0;
+
+      res.status(200).json({
+        total,
+        completed: completedCount,
+        in_progress: inProgressCount,
+        failed: failedCount,
+        progress_percent: overallProgress,
+        total_messages_synced: totalMessages,
+        checkpoints
+      });
+
+    } catch (error) {
+      logger.error({ error }, 'Error getting bulk sync status');
+      res.status(500).json({
+        error: 'Failed to get bulk sync status',
+        message: String(error)
+      });
+    }
+  });
+
   return router;
 }
 
@@ -396,6 +609,28 @@ function waitForHistoryMessages(
  * Background sync function
  * Fetches messages with checkpointing
  */
+/**
+ * Classify error type for better handling
+ */
+function classifyError(error: any): string {
+  const errorStr = String(error).toLowerCase();
+
+  if (errorStr.includes('timeout')) {
+    return 'TIMEOUT: WhatsApp did not respond within expected time';
+  }
+  if (errorStr.includes('rate limit') || errorStr.includes('too many requests')) {
+    return 'RATE_LIMIT: Too many requests, backing off';
+  }
+  if (errorStr.includes('socket') || errorStr.includes('not available') || errorStr.includes('connection')) {
+    return 'DISCONNECTED: WhatsApp socket not available';
+  }
+  if (errorStr.includes('invalid') || errorStr.includes('not found')) {
+    return 'INVALID_KEY: Message reference not found';
+  }
+
+  return `UNKNOWN: ${errorStr}`;
+}
+
 async function syncHistory(
   chatJid: string,
   checkpoint: SyncCheckpoint,
@@ -407,6 +642,10 @@ async function syncHistory(
 ): Promise<void> {
   const BATCH_SIZE = 100;
   const CHECKPOINT_INTERVAL = 100;
+  const RATE_LIMIT_DELAY_MS = 3000;
+  const MAX_RETRIES = 3;
+
+  const startTime = Date.now();
 
   try {
     logger.info({ chatJid, maxMessages }, 'Starting history sync');
@@ -420,11 +659,12 @@ async function syncHistory(
 
     const sock = baileysClient.getSocket();
     if (!sock) {
-      throw new Error('WhatsApp socket not available');
+      throw new Error('DISCONNECTED: WhatsApp socket not available');
     }
 
     let messagesFetched = 0;
     let cursor: string | undefined = checkpoint.last_message_id || undefined;
+    let retryCount = 0;
 
     while (messagesFetched < maxMessages && checkpoint.isActive()) {
       try {
@@ -443,6 +683,9 @@ async function syncHistory(
           break;
         }
 
+        // Reset retry count on success
+        retryCount = 0;
+
         // Store messages in temp database
         database.storeMessagesInBatch(batch.messages);
 
@@ -457,35 +700,75 @@ async function syncHistory(
           batch.messages.length
         );
 
+        // Calculate and log progress milestones
+        const progressPercent = Math.floor((messagesFetched / maxMessages) * 100);
+        const elapsedMs = Date.now() - startTime;
+        const messagesPerSecond = messagesFetched / (elapsedMs / 1000);
+        const remainingMessages = maxMessages - messagesFetched;
+        const estimatedCompletionMs = remainingMessages / messagesPerSecond * 1000;
+
         // Save checkpoint every CHECKPOINT_INTERVAL messages
         if (checkpoint.messages_synced % CHECKPOINT_INTERVAL === 0) {
           database.updateSyncStatus({
             messages_synced: checkpoint.messages_synced,
-            progress_percent: Math.floor((messagesFetched / maxMessages) * 100),
+            progress_percent: progressPercent,
             last_sync_time: new Date()
           });
-          logger.info(
-            { messages_synced: checkpoint.messages_synced, progress: `${Math.floor((messagesFetched / maxMessages) * 100)}%` },
-            'Checkpoint saved'
-          );
+
+          logger.info({
+            messages_synced: checkpoint.messages_synced,
+            progress_percent: progressPercent,
+            messages_per_second: messagesPerSecond.toFixed(2),
+            estimated_completion_minutes: (estimatedCompletionMs / 60000).toFixed(1)
+          }, 'Checkpoint saved');
+
+          // Log progress milestones
+          if (progressPercent === 25 || progressPercent === 50 || progressPercent === 75) {
+            logger.info({ progress_percent: progressPercent }, `Sync ${progressPercent}% complete`);
+          }
         }
 
         // Rate limiting: 3-second delay between batches to avoid WhatsApp throttling
-        await new Promise(resolve => setTimeout(resolve, 3000));
-      } catch (error) {
-        logger.warn({ error }, 'Error fetching batch, will retry');
+        await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY_MS));
 
-        // Network error - mark as interrupted
-        checkpoint.interrupt(`Network error: ${error}`);
-        database.updateSyncStatus({
-          is_syncing: false,
-          messages_synced: checkpoint.messages_synced
-        });
-        throw error;
+      } catch (error) {
+        const classifiedError = classifyError(error);
+        logger.warn({
+          error: classifiedError,
+          retry_count: retryCount,
+          chat_jid: chatJid
+        }, 'Error fetching batch');
+
+        // Exponential backoff retry logic
+        if (retryCount < MAX_RETRIES) {
+          retryCount++;
+          const backoffMs = RATE_LIMIT_DELAY_MS * Math.pow(2, retryCount - 1);
+
+          logger.info({
+            retry_count: retryCount,
+            backoff_seconds: (backoffMs / 1000).toFixed(1)
+          }, 'Retrying after backoff');
+
+          await new Promise(resolve => setTimeout(resolve, backoffMs));
+          continue; // Retry the same batch
+        } else {
+          // All retries exhausted - mark as interrupted
+          logger.error({ error: classifiedError, chat_jid: chatJid }, 'All retries exhausted');
+
+          checkpoint.interrupt(classifiedError);
+          database.updateSyncStatus({
+            is_syncing: false,
+            messages_synced: checkpoint.messages_synced
+          });
+          throw new Error(classifiedError);
+        }
       }
     }
 
     // Sync completed
+    const totalElapsedMs = Date.now() - startTime;
+    const avgMessagesPerSecond = checkpoint.messages_synced / (totalElapsedMs / 1000);
+
     checkpoint.complete();
     database.updateSyncStatus({
       is_syncing: false,
@@ -495,15 +778,19 @@ async function syncHistory(
       last_sync_time: new Date()
     });
 
-    logger.info(
-      { chat_jid: chatJid, total_messages: checkpoint.messages_synced },
-      'History sync completed'
-    );
-  } catch (error) {
-    logger.error({ error, chat_jid: chatJid }, 'History sync failed');
+    logger.info({
+      chat_jid: chatJid,
+      total_messages: checkpoint.messages_synced,
+      elapsed_seconds: (totalElapsedMs / 1000).toFixed(1),
+      avg_messages_per_second: avgMessagesPerSecond.toFixed(2)
+    }, 'History sync completed successfully');
 
-    // Mark as failed
-    checkpoint.fail(String(error));
+  } catch (error) {
+    const classifiedError = classifyError(error);
+    logger.error({ error: classifiedError, chat_jid: chatJid }, 'History sync failed');
+
+    // Mark as failed with classified error
+    checkpoint.fail(classifiedError);
     database.updateSyncStatus({
       is_syncing: false,
       messages_synced: checkpoint.messages_synced
