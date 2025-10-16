@@ -319,6 +319,43 @@ export class DatabaseService {
   }
 
   /**
+   * Get the oldest message in a chat (used for cursor-based pagination)
+   */
+  getOldestMessage(chatJID: string): Message | null {
+    const stmt = this.db.prepare(`
+      SELECT * FROM messages
+      WHERE chat_jid = ?
+      ORDER BY timestamp ASC
+      LIMIT 1
+    `);
+    const row: any = stmt.get(chatJID);
+
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      chat_jid: row.chat_jid,
+      sender: row.sender,
+      content: row.content,
+      timestamp: new Date(row.timestamp),
+      is_from_me: row.is_from_me === 1
+    };
+  }
+
+  /**
+   * Check if a message exists in the database (for checkpoint validation)
+   */
+  messageExists(chatJID: string, messageId: string): boolean {
+    const stmt = this.db.prepare(`
+      SELECT 1 FROM messages
+      WHERE chat_jid = ? AND id = ?
+      LIMIT 1
+    `);
+    const result = stmt.get(chatJID, messageId);
+    return result !== undefined;
+  }
+
+  /**
    * Get message count
    */
   getMessageCount(): number {

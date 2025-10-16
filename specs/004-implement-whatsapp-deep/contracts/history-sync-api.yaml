@@ -1,0 +1,525 @@
+openapi: 3.0.3
+info:
+  title: WhatsApp Historical Message Sync API
+  description: |
+    REST API for fetching and managing historical WhatsApp message synchronization.
+
+    This API provides endpoints to:
+    - Start on-demand historical message sync for conversations
+    - Monitor sync progress with checkpoint tracking
+    - Resume interrupted syncs
+    - Cancel active syncs
+    - Query synced messages
+
+    The sync process is asynchronous and resumable, using checkpoint-based progress tracking.
+  version: 1.0.0
+  contact:
+    name: WhatsApp MCP API Support
+
+servers:
+  - url: http://localhost:8081
+    description: Local development server (Baileys bridge)
+
+tags:
+  - name: History Sync
+    description: Historical message synchronization operations
+  - name: Messages
+    description: Query synced historical messages
+
+paths:
+  /history/sync:
+    post:
+      tags:
+        - History Sync
+      summary: Start or resume historical message sync
+      description: |
+        Initiates on-demand historical message sync for a specific WhatsApp conversation.
+
+        The sync process:
+        1. Fetches messages older than currently stored messages
+        2. Stores messages in local database
+        3. Updates checkpoint for resumability
+        4. Returns immediately (sync continues in background)
+
+        Rate limiting: 50 messages per request, 3-second delays between batches.
+      operationId: startHistorySync
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - chat_jid
+              properties:
+                chat_jid:
+                  type: string
+                  description: WhatsApp conversation identifier
+                  example: "1234567890@s.whatsapp.net"
+                  pattern: "^[0-9]+@(s\\.whatsapp\\.net|g\\.us)$"
+                resume:
+                  type: boolean
+                  default: false
+                  description: Whether to resume from existing checkpoint
+                max_messages:
+                  type: integer
+                  minimum: 1
+                  maximum: 10000
+                  default: 1000
+                  description: Maximum number of messages to fetch
+            examples:
+              new_sync:
+                summary: Start new sync
+                value:
+                  chat_jid: "1234567890@s.whatsapp.net"
+                  max_messages: 5000
+              resume_sync:
+                summary: Resume interrupted sync
+                value:
+                  chat_jid: "1234567890@s.whatsapp.net"
+                  resume: true
+                  max_messages: 5000
+      responses:
+        '202':
+          description: Sync started successfully (processing in background)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistorySyncResponse'
+              examples:
+                sync_started:
+                  value:
+                    sync_id: "1234567890@s.whatsapp.net"
+                    checkpoint:
+                      chat_jid: "1234567890@s.whatsapp.net"
+                      status: "in_progress"
+                      messages_synced: 0
+                      last_message_id: null
+                      last_timestamp: null
+                      progress_percent: 0
+                      created_at: "2025-10-16T15:30:00Z"
+                      updated_at: "2025-10-16T15:30:00Z"
+                    status: "started"
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalid_jid:
+                  value:
+                    error: "Invalid chat_jid. Must be a valid WhatsApp JID (e.g., 1234567890@s.whatsapp.net)"
+                invalid_max:
+                  value:
+                    error: "max_messages must be between 1 and 10000"
+        '503':
+          description: WhatsApp not connected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "WhatsApp is not connected. Please connect first."
+                status: "disconnected"
+
+  /history/sync/{chat_jid}/status:
+    get:
+      tags:
+        - History Sync
+      summary: Get sync progress status
+      description: |
+        Returns current synchronization status and progress for a conversation.
+
+        If sync is active, returns real-time progress from in-memory checkpoint.
+        Otherwise, returns persisted checkpoint from database.
+      operationId: getSyncStatus
+      parameters:
+        - name: chat_jid
+          in: path
+          required: true
+          description: WhatsApp conversation identifier
+          schema:
+            type: string
+            example: "1234567890@s.whatsapp.net"
+      responses:
+        '200':
+          description: Sync status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncStatusResponse'
+              examples:
+                in_progress:
+                  value:
+                    checkpoint:
+                      chat_jid: "1234567890@s.whatsapp.net"
+                      status: "in_progress"
+                      messages_synced: 2500
+                      last_message_id: "ABC123XYZ"
+                      last_timestamp: "2023-06-15T10:30:00Z"
+                      progress_percent: 50
+                      created_at: "2025-10-16T15:30:00Z"
+                      updated_at: "2025-10-16T15:35:00Z"
+                    is_active: true
+                completed:
+                  value:
+                    checkpoint:
+                      chat_jid: "1234567890@s.whatsapp.net"
+                      status: "completed"
+                      messages_synced: 5000
+                      progress_percent: 100
+                      created_at: "2025-10-16T15:30:00Z"
+                      updated_at: "2025-10-16T15:40:00Z"
+                      completed_at: "2025-10-16T15:40:00Z"
+                    is_active: false
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /history/sync/{chat_jid}/cancel:
+    post:
+      tags:
+        - History Sync
+      summary: Cancel ongoing sync
+      description: |
+        Cancels an active synchronization process for a conversation.
+
+        The sync can be resumed later from the last checkpoint.
+        Only active syncs (status: in_progress) can be cancelled.
+      operationId: cancelSync
+      parameters:
+        - name: chat_jid
+          in: path
+          required: true
+          description: WhatsApp conversation identifier
+          schema:
+            type: string
+            example: "1234567890@s.whatsapp.net"
+      responses:
+        '200':
+          description: Sync cancelled successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Sync cancelled successfully"
+                  checkpoint:
+                    $ref: '#/components/schemas/SyncCheckpoint'
+        '400':
+          description: Cannot cancel sync with current status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Cannot cancel sync with status: completed"
+        '404':
+          description: No active sync found for conversation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "No active sync found for this chat"
+
+  /history/sync/{chat_jid}/resume:
+    post:
+      tags:
+        - History Sync
+      summary: Resume interrupted or cancelled sync
+      description: |
+        Resumes a previously interrupted or cancelled sync from its last checkpoint.
+
+        Cannot resume syncs that are:
+        - Already active (status: in_progress)
+        - Failed (status: failed)
+        - Completed (status: completed)
+      operationId: resumeSync
+      parameters:
+        - name: chat_jid
+          in: path
+          required: true
+          description: WhatsApp conversation identifier
+          schema:
+            type: string
+            example: "1234567890@s.whatsapp.net"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                max_messages:
+                  type: integer
+                  minimum: 1
+                  maximum: 10000
+                  default: 1000
+                  description: Maximum additional messages to fetch
+      responses:
+        '202':
+          description: Sync resumed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Sync resumed successfully"
+                  checkpoint:
+                    $ref: '#/components/schemas/SyncCheckpoint'
+        '400':
+          description: Cannot resume sync
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Cannot resume sync"
+                message: "Sync status must be interrupted or cancelled"
+        '409':
+          description: Sync already active
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Sync is already active for this chat"
+
+  /history/messages:
+    get:
+      tags:
+        - Messages
+      summary: Query historical messages
+      description: |
+        Retrieves historical messages for a conversation from the local database.
+
+        Returns messages in reverse chronological order (newest first).
+        Results are limited to prevent large response payloads.
+      operationId: queryMessages
+      parameters:
+        - name: chat_jid
+          in: query
+          required: true
+          description: WhatsApp conversation identifier
+          schema:
+            type: string
+            example: "1234567890@s.whatsapp.net"
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of messages to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+      responses:
+        '200':
+          description: Messages retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessagesResponse'
+              example:
+                chat_jid: "1234567890@s.whatsapp.net"
+                count: 3
+                messages:
+                  - id: "MSG_ABC_123"
+                    chat_jid: "1234567890@s.whatsapp.net"
+                    sender: "1234567890@s.whatsapp.net"
+                    content: "Hey, are you free this weekend?"
+                    timestamp: "2023-08-15T14:30:00Z"
+                    is_from_me: false
+                  - id: "MSG_DEF_456"
+                    chat_jid: "1234567890@s.whatsapp.net"
+                    sender: "me"
+                    content: "Yes! Let's grab lunch"
+                    timestamp: "2023-08-15T14:32:00Z"
+                    is_from_me: true
+                  - id: "MSG_GHI_789"
+                    chat_jid: "1234567890@s.whatsapp.net"
+                    sender: "1234567890@s.whatsapp.net"
+                    content: "Great! How about Saturday at noon?"
+                    timestamp: "2023-08-15T14:35:00Z"
+                    is_from_me: false
+        '400':
+          description: Missing or invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "chat_jid query parameter is required"
+
+components:
+  schemas:
+    HistorySyncResponse:
+      type: object
+      required:
+        - sync_id
+        - checkpoint
+        - status
+      properties:
+        sync_id:
+          type: string
+          description: Unique sync identifier (same as chat_jid)
+          example: "1234567890@s.whatsapp.net"
+        checkpoint:
+          $ref: '#/components/schemas/SyncCheckpoint'
+        status:
+          type: string
+          enum: [started]
+          description: Immediate response status
+
+    SyncStatusResponse:
+      type: object
+      required:
+        - checkpoint
+        - is_active
+      properties:
+        checkpoint:
+          $ref: '#/components/schemas/SyncCheckpoint'
+        is_active:
+          type: boolean
+          description: Whether sync is currently running
+
+    SyncCheckpoint:
+      type: object
+      required:
+        - chat_jid
+        - status
+        - messages_synced
+        - created_at
+        - updated_at
+      properties:
+        chat_jid:
+          type: string
+          description: Conversation identifier
+          example: "1234567890@s.whatsapp.net"
+        status:
+          type: string
+          enum: [not_started, in_progress, interrupted, cancelled, completed, failed]
+          description: Current sync state
+        messages_synced:
+          type: integer
+          minimum: 0
+          description: Total messages fetched so far
+          example: 2500
+        last_message_id:
+          type: string
+          nullable: true
+          description: ID of oldest message fetched (pagination cursor)
+          example: "ABC123XYZ"
+        last_timestamp:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp of oldest message fetched
+          example: "2023-06-15T10:30:00Z"
+        progress_percent:
+          type: integer
+          minimum: 0
+          maximum: 100
+          nullable: true
+          description: Estimated completion percentage
+          example: 50
+        error_message:
+          type: string
+          nullable: true
+          description: Error details if status is failed
+        created_at:
+          type: string
+          format: date-time
+          description: When sync started
+          example: "2025-10-16T15:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Last checkpoint update
+          example: "2025-10-16T15:35:00Z"
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When sync completed
+          example: "2025-10-16T15:40:00Z"
+
+    Message:
+      type: object
+      required:
+        - id
+        - chat_jid
+        - sender
+        - content
+        - timestamp
+        - is_from_me
+      properties:
+        id:
+          type: string
+          description: Unique WhatsApp message ID
+          example: "MSG_ABC_123"
+        chat_jid:
+          type: string
+          description: Conversation identifier
+          example: "1234567890@s.whatsapp.net"
+        sender:
+          type: string
+          description: Sender identifier (JID or "me")
+          example: "1234567890@s.whatsapp.net"
+        content:
+          type: string
+          description: Message text or media description
+          example: "Hey, are you free this weekend?"
+        timestamp:
+          type: string
+          format: date-time
+          description: When message was sent (UTC)
+          example: "2023-08-15T14:30:00Z"
+        is_from_me:
+          type: boolean
+          description: Whether message was sent by current user
+
+    MessagesResponse:
+      type: object
+      required:
+        - chat_jid
+        - count
+        - messages
+      properties:
+        chat_jid:
+          type: string
+          description: Conversation identifier
+          example: "1234567890@s.whatsapp.net"
+        count:
+          type: integer
+          minimum: 0
+          description: Number of messages returned
+          example: 100
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Message'
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Error message
+          example: "Invalid chat_jid format"
+        message:
+          type: string
+          description: Additional error details
+        status:
+          type: string
+          description: System status (if applicable)

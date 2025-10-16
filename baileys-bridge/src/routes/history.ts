@@ -7,6 +7,7 @@
 
 import { Router, Request, Response } from 'express';
 import { WASocket, downloadMediaMessage, proto } from '@whiskeysockets/baileys';
+import Long from 'long';
 import { BaileysClient } from '../services/baileys_client.js';
 import { DatabaseService } from '../services/database.js';
 import { SyncCheckpoint, SyncStatus } from '../models/sync_checkpoint.js';
@@ -315,6 +316,83 @@ export function createHistoryRouter(config: HistorySyncConfig): Router {
 }
 
 /**
+ * Normalize timestamp from various formats to Unix seconds
+ * Handles Long type from protobuf, Date objects, and plain numbers
+ */
+function normalizeTimestamp(ts: Date | number | Long): number {
+  if (ts instanceof Date) {
+    return Math.floor(ts.getTime() / 1000);
+  }
+  if (Long.isLong(ts)) {
+    return ts.toNumber();
+  }
+  return ts;
+}
+
+/**
+ * Extract text content from WhatsApp message protobuf
+ * Handles various message types (text, media with captions, etc.)
+ */
+function extractMessageContent(msg: proto.IWebMessageInfo): string {
+  const message = msg.message;
+  if (!message) return '';
+
+  // Text messages
+  if (message.conversation) return message.conversation;
+  if (message.extendedTextMessage?.text) return message.extendedTextMessage.text;
+
+  // Media with captions
+  if (message.imageMessage?.caption) return `[Image: ${message.imageMessage.caption}]`;
+  if (message.videoMessage?.caption) return `[Video: ${message.videoMessage.caption}]`;
+  if (message.documentMessage?.caption) return `[Document: ${message.documentMessage.caption}]`;
+  if (message.audioMessage) return '[Audio message]';
+
+  // Other message types
+  if (message.stickerMessage) return '[Sticker]';
+  if (message.contactMessage) return '[Contact card]';
+  if (message.locationMessage) return '[Location]';
+
+  return '[Non-text message]';
+}
+
+/**
+ * Wait for messaging-history.set event with ON_DEMAND syncType
+ * Returns messages and cursor for pagination
+ */
+function waitForHistoryMessages(
+  sock: WASocket,
+  timeoutMs: number,
+  logger: Logger
+): Promise<{ messages: proto.IWebMessageInfo[]; cursor: string | undefined }> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      sock.ev.off('messaging-history.set', handler);
+      reject(new Error(`Timeout waiting for message history (${timeoutMs}ms)`));
+    }, timeoutMs);
+
+    const handler = ({ messages, syncType }: any) => {
+      // Only process ON_DEMAND sync events (not INITIAL, PUSH_NAME, etc.)
+      if (syncType === proto.HistorySync.HistorySyncType.ON_DEMAND) {
+        clearTimeout(timeout);
+        sock.ev.off('messaging-history.set', handler);
+
+        logger.debug({ messageCount: messages.length }, 'Received ON_DEMAND history messages');
+
+        // Extract cursor from oldest message in batch
+        const cursor = messages.length > 0
+          ? messages[messages.length - 1].key?.id
+          : undefined;
+
+        resolve({ messages, cursor });
+      }
+      // Ignore other sync types, keep waiting
+    };
+
+    sock.ev.on('messaging-history.set', handler);
+  });
+}
+
+/**
  * Background sync function
  * Fetches messages with checkpointing
  */
@@ -356,7 +434,8 @@ async function syncHistory(
           chatJid,
           BATCH_SIZE,
           cursor,
-          logger
+          logger,
+          database
         );
 
         if (batch.messages.length === 0) {
@@ -391,8 +470,8 @@ async function syncHistory(
           );
         }
 
-        // Small delay to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Rate limiting: 3-second delay between batches to avoid WhatsApp throttling
+        await new Promise(resolve => setTimeout(resolve, 3000));
       } catch (error) {
         logger.warn({ error }, 'Error fetching batch, will retry');
 
@@ -445,47 +524,72 @@ async function fetchMessageBatch(
   chatJid: string,
   count: number,
   oldestMessageId: string | undefined,
-  logger: Logger
+  logger: Logger,
+  database: DatabaseService
 ): Promise<{ messages: any[]; cursor: string | undefined }> {
   try {
-    // If we have an oldest message ID, use it as a reference point
-    if (!oldestMessageId) {
-      logger.warn({ chatJid }, 'No oldest message ID provided - cannot fetch history without starting point');
+    // Get the oldest message from database to use as cursor
+    const oldestMessage = database.getOldestMessage(chatJid);
+
+    if (!oldestMessage) {
+      logger.warn({ chatJid }, 'No messages in database - cannot fetch older history without starting point');
       return { messages: [], cursor: undefined };
     }
 
-    // We need the full message key and timestamp
-    // These should be passed in from the checkpoint
-    // For now, log that we need this info
-    logger.info({ chatJid, oldestMessageId, count }, 'Would call fetchMessageHistory here with proper message key');
+    // Construct WAMessageKey for the oldest message
+    const messageKey = {
+      remoteJid: chatJid,
+      id: oldestMessage.id,
+      fromMe: oldestMessage.is_from_me
+    };
 
-    // NOTE: fetchMessageHistory requires:
-    // - count: number of messages to fetch
-    // - messageKey: { remoteJid, id, fromMe }
-    // - messageTimestamp: number (in milliseconds)
-    //
-    // The function triggers WhatsApp to send messages via messaging-history.set event
-    // with syncType === HistorySyncType.ON_DEMAND
-    //
-    // Example call:
-    // const messageId = await sock.fetchMessageHistory(
-    //   count,
-    //   { remoteJid: chatJid, id: oldestMessageId, fromMe: false },
-    //   oldestTimestamp
-    // );
-    //
-    // Then listen for the event:
-    // sock.ev.on('messaging-history.set', ({ messages, syncType }) => {
-    //   if (syncType === proto.HistorySync.HistorySyncType.ON_DEMAND) {
-    //     // Process these messages
-    //   }
-    // });
+    // Normalize timestamp to Unix seconds (fetchMessageHistory expects seconds, not milliseconds)
+    const timestamp = normalizeTimestamp(oldestMessage.timestamp);
 
-    logger.warn('fetchMessageHistory integration requires message timestamp - implement with full message data');
-    return { messages: [], cursor: undefined };
+    logger.info({
+      chatJid,
+      oldestMessageId: oldestMessage.id,
+      timestamp,
+      count: Math.min(count, 50) // Cap at 50 per Baileys limitations
+    }, 'Requesting message history from WhatsApp');
+
+    // Request message history (returns immediately, messages arrive via event)
+    await sock.fetchMessageHistory(
+      Math.min(count, 50), // WhatsApp limits to 50 messages per request
+      messageKey,
+      timestamp
+    );
+
+    // Wait for messages to arrive via messaging-history.set event
+    const { messages, cursor } = await waitForHistoryMessages(sock, 30000, logger);
+
+    // Transform protobuf messages to our Message format
+    const transformedMessages = messages.map((msg: proto.IWebMessageInfo) => {
+      const messageTimestamp = msg.messageTimestamp;
+      const timestampSeconds = Long.isLong(messageTimestamp)
+        ? messageTimestamp.toNumber()
+        : (typeof messageTimestamp === 'number' ? messageTimestamp : 0);
+
+      return {
+        id: msg.key?.id || '',
+        chat_jid: chatJid,
+        sender: msg.key?.participant || msg.key?.remoteJid || '',
+        content: extractMessageContent(msg),
+        timestamp: new Date(timestampSeconds * 1000), // Convert seconds to milliseconds
+        is_from_me: msg.key?.fromMe || false
+      };
+    });
+
+    logger.info({
+      chatJid,
+      messagesReceived: transformedMessages.length,
+      cursor
+    }, 'Successfully fetched message batch');
+
+    return { messages: transformedMessages, cursor };
 
   } catch (error) {
-    logger.error({ error, chat_jid: chatJid }, 'Error fetching messages');
+    logger.error({ error, chat_jid: chatJid }, 'Error fetching message batch');
     throw error;
   }
 }
