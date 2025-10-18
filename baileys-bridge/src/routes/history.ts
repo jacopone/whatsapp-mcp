@@ -8,6 +8,7 @@
 import { Router, Request, Response } from 'express';
 import { WASocket, downloadMediaMessage, proto } from '@whiskeysockets/baileys';
 import Long from 'long';
+import Database from 'better-sqlite3';
 import { BaileysClient } from '../services/baileys_client.js';
 import { DatabaseService } from '../services/database.js';
 import { SyncCheckpoint, SyncStatus } from '../models/sync_checkpoint.js';
@@ -29,6 +30,7 @@ export interface HistorySyncConfig {
   baileysClient: BaileysClient;
   database: DatabaseService;
   logLevel?: string;
+  goDbPath?: string; // Path to Go database for reading oldest messages
 }
 
 /**
@@ -37,10 +39,193 @@ export interface HistorySyncConfig {
 export function createHistoryRouter(config: HistorySyncConfig): Router {
   const router = Router();
   const logger = pino({ level: config.logLevel || 'info' });
-  const { baileysClient, database } = config;
+  const { baileysClient, database, goDbPath } = config;
 
   // In-memory tracking of active syncs
   const activeSyncs = new Map<string, SyncCheckpoint>();
+
+  /**
+   * POST /history/sync/bulk
+   * Start history sync for multiple chats
+   * NOTE: This route MUST be defined before parameterized routes like /sync/:chat_jid/status
+   */
+  router.post('/sync/bulk', async (req: Request, res: Response) => {
+    try {
+      const { chat_jids, max_messages = 1000 } = req.body;
+
+      // Validation
+      if (!Array.isArray(chat_jids) || chat_jids.length === 0) {
+        return res.status(400).json({
+          error: 'chat_jids must be a non-empty array'
+        });
+      }
+
+      if (chat_jids.length > 50) {
+        return res.status(400).json({
+          error: 'Maximum 50 chat_jids allowed per bulk request'
+        });
+      }
+
+      // Validate JID format
+      const invalidJids = chat_jids.filter((jid: string) => !jid || !jid.includes('@'));
+      if (invalidJids.length > 0) {
+        return res.status(400).json({
+          error: 'Invalid JID format detected',
+          invalid_jids: invalidJids
+        });
+      }
+
+      // Check WhatsApp connection
+      if (!baileysClient.getConnectionState()) {
+        return res.status(503).json({
+          error: 'WhatsApp is not connected. Please connect first.',
+          status: 'disconnected'
+        });
+      }
+
+      // Queue all sync requests
+      const queuedSyncs: string[] = [];
+      const failedSyncs: { chat_jid: string; error: string }[] = [];
+
+      for (const chat_jid of chat_jids) {
+        try {
+          // Check if sync already active
+          if (activeSyncs.has(chat_jid)) {
+            logger.warn({ chat_jid }, 'Sync already active, skipping');
+            continue;
+          }
+
+          // Create checkpoint
+          const checkpoint = SyncCheckpoint.create(chat_jid);
+          checkpoint.start();
+
+          // Track active sync
+          activeSyncs.set(chat_jid, checkpoint);
+          queuedSyncs.push(chat_jid);
+
+          // Start sync in background (syncs run sequentially due to rate limiting)
+          syncHistory(
+            chat_jid,
+            checkpoint,
+            max_messages,
+            baileysClient,
+            database,
+            logger,
+            activeSyncs,
+            goDbPath
+          ).catch((error) => {
+            logger.error({ error, chat_jid }, 'Background sync failed in bulk operation');
+            checkpoint.fail(error.message);
+            activeSyncs.delete(chat_jid);
+          });
+
+        } catch (error) {
+          failedSyncs.push({
+            chat_jid,
+            error: String(error)
+          });
+        }
+      }
+
+      logger.info({
+        queued: queuedSyncs.length,
+        failed: failedSyncs.length,
+        total: chat_jids.length
+      }, 'Bulk sync initiated');
+
+      res.status(202).json({
+        queued: queuedSyncs.length,
+        sync_ids: queuedSyncs,
+        failed: failedSyncs,
+        message: `Queued ${queuedSyncs.length} of ${chat_jids.length} chats for sync`
+      });
+
+    } catch (error) {
+      logger.error({ error }, 'Error initiating bulk sync');
+      res.status(500).json({
+        error: 'Failed to initiate bulk sync',
+        message: String(error)
+      });
+    }
+  });
+
+  /**
+   * GET /history/sync/bulk/status
+   * Get status for multiple sync operations
+   * NOTE: This route MUST be defined before parameterized routes like /sync/:chat_jid/status
+   */
+  router.get('/sync/bulk/status', async (req: Request, res: Response) => {
+    try {
+      const { sync_ids } = req.query;
+
+      if (!sync_ids) {
+        return res.status(400).json({
+          error: 'sync_ids query parameter required (comma-separated chat_jids)'
+        });
+      }
+
+      // Parse sync_ids (can be array or comma-separated string)
+      const syncIdArray = Array.isArray(sync_ids)
+        ? sync_ids
+        : String(sync_ids).split(',');
+
+      const checkpoints: any[] = [];
+      let completedCount = 0;
+      let inProgressCount = 0;
+      let failedCount = 0;
+      let totalMessages = 0;
+
+      for (const sync_id of syncIdArray) {
+        const chat_jid = String(sync_id).trim();
+
+        // Check active sync first
+        const activeCheckpoint = activeSyncs.get(chat_jid);
+        if (activeCheckpoint) {
+          const checkpointData = activeCheckpoint.toJSON();
+          checkpoints.push(checkpointData);
+
+          if (checkpointData.status === 'completed') completedCount++;
+          else if (checkpointData.status === 'in_progress') inProgressCount++;
+          else if (checkpointData.status === 'failed') failedCount++;
+
+          totalMessages += checkpointData.messages_synced || 0;
+        } else {
+          // Check database (fallback for completed/old syncs)
+          const syncStatus = database.getSyncStatus();
+          const checkpointData = {
+            chat_jid,
+            messages_synced: syncStatus.messages_synced,
+            status: syncStatus.is_syncing ? 'in_progress' : 'completed',
+            last_sync_time: syncStatus.last_sync_time,
+            progress_percent: syncStatus.progress_percent
+          };
+          checkpoints.push(checkpointData);
+
+          if (checkpointData.status === 'completed') completedCount++;
+        }
+      }
+
+      const total = syncIdArray.length;
+      const overallProgress = total > 0 ? Math.floor((completedCount / total) * 100) : 0;
+
+      res.status(200).json({
+        total,
+        completed: completedCount,
+        in_progress: inProgressCount,
+        failed: failedCount,
+        progress_percent: overallProgress,
+        total_messages_synced: totalMessages,
+        checkpoints
+      });
+
+    } catch (error) {
+      logger.error({ error }, 'Error getting bulk sync status');
+      res.status(500).json({
+        error: 'Failed to get bulk sync status',
+        message: String(error)
+      });
+    }
+  });
 
   /**
    * POST /history/sync
@@ -105,7 +290,8 @@ export function createHistoryRouter(config: HistorySyncConfig): Router {
         baileysClient,
         database,
         logger,
-        activeSyncs
+        activeSyncs,
+        goDbPath
       ).catch((error) => {
         logger.error({ error, chat_jid }, 'Background sync failed');
         checkpoint.fail(error.message);
@@ -287,7 +473,8 @@ export function createHistoryRouter(config: HistorySyncConfig): Router {
         baileysClient,
         database,
         logger,
-        activeSyncs
+        activeSyncs,
+        goDbPath
       ).catch((error) => {
         logger.error({ error, chat_jid }, 'Background sync failed on resume');
         checkpoint.fail(error.message);
@@ -340,186 +527,6 @@ export function createHistoryRouter(config: HistorySyncConfig): Router {
       logger.error({ error }, 'Error querying messages');
       res.status(500).json({
         error: 'Failed to query messages',
-        message: String(error)
-      });
-    }
-  });
-
-  /**
-   * POST /history/sync/bulk
-   * Start history sync for multiple chats
-   */
-  router.post('/sync/bulk', async (req: Request, res: Response) => {
-    try {
-      const { chat_jids, max_messages = 1000 } = req.body;
-
-      // Validation
-      if (!Array.isArray(chat_jids) || chat_jids.length === 0) {
-        return res.status(400).json({
-          error: 'chat_jids must be a non-empty array'
-        });
-      }
-
-      if (chat_jids.length > 50) {
-        return res.status(400).json({
-          error: 'Maximum 50 chat_jids allowed per bulk request'
-        });
-      }
-
-      // Validate JID format
-      const invalidJids = chat_jids.filter((jid: string) => !jid || !jid.includes('@'));
-      if (invalidJids.length > 0) {
-        return res.status(400).json({
-          error: 'Invalid JID format detected',
-          invalid_jids: invalidJids
-        });
-      }
-
-      // Check WhatsApp connection
-      if (!baileysClient.getConnectionState()) {
-        return res.status(503).json({
-          error: 'WhatsApp is not connected. Please connect first.',
-          status: 'disconnected'
-        });
-      }
-
-      // Queue all sync requests
-      const queuedSyncs: string[] = [];
-      const failedSyncs: { chat_jid: string; error: string }[] = [];
-
-      for (const chat_jid of chat_jids) {
-        try {
-          // Check if sync already active
-          if (activeSyncs.has(chat_jid)) {
-            logger.warn({ chat_jid }, 'Sync already active, skipping');
-            continue;
-          }
-
-          // Create checkpoint
-          const checkpoint = SyncCheckpoint.create(chat_jid);
-          checkpoint.start();
-
-          // Track active sync
-          activeSyncs.set(chat_jid, checkpoint);
-          queuedSyncs.push(chat_jid);
-
-          // Start sync in background (syncs run sequentially due to rate limiting)
-          syncHistory(
-            chat_jid,
-            checkpoint,
-            max_messages,
-            baileysClient,
-            database,
-            logger,
-            activeSyncs
-          ).catch((error) => {
-            logger.error({ error, chat_jid }, 'Background sync failed in bulk operation');
-            checkpoint.fail(error.message);
-            activeSyncs.delete(chat_jid);
-          });
-
-        } catch (error) {
-          failedSyncs.push({
-            chat_jid,
-            error: String(error)
-          });
-        }
-      }
-
-      logger.info({
-        queued: queuedSyncs.length,
-        failed: failedSyncs.length,
-        total: chat_jids.length
-      }, 'Bulk sync initiated');
-
-      res.status(202).json({
-        queued: queuedSyncs.length,
-        sync_ids: queuedSyncs,
-        failed: failedSyncs,
-        message: `Queued ${queuedSyncs.length} of ${chat_jids.length} chats for sync`
-      });
-
-    } catch (error) {
-      logger.error({ error }, 'Error initiating bulk sync');
-      res.status(500).json({
-        error: 'Failed to initiate bulk sync',
-        message: String(error)
-      });
-    }
-  });
-
-  /**
-   * GET /history/sync/bulk/status
-   * Get status for multiple sync operations
-   */
-  router.get('/sync/bulk/status', async (req: Request, res: Response) => {
-    try {
-      const { sync_ids } = req.query;
-
-      if (!sync_ids) {
-        return res.status(400).json({
-          error: 'sync_ids query parameter required (comma-separated chat_jids)'
-        });
-      }
-
-      // Parse sync_ids (can be array or comma-separated string)
-      const syncIdArray = Array.isArray(sync_ids)
-        ? sync_ids
-        : String(sync_ids).split(',');
-
-      const checkpoints: any[] = [];
-      let completedCount = 0;
-      let inProgressCount = 0;
-      let failedCount = 0;
-      let totalMessages = 0;
-
-      for (const sync_id of syncIdArray) {
-        const chat_jid = String(sync_id).trim();
-
-        // Check active sync first
-        const activeCheckpoint = activeSyncs.get(chat_jid);
-        if (activeCheckpoint) {
-          const checkpointData = activeCheckpoint.toJSON();
-          checkpoints.push(checkpointData);
-
-          if (checkpointData.status === 'completed') completedCount++;
-          else if (checkpointData.status === 'in_progress') inProgressCount++;
-          else if (checkpointData.status === 'failed') failedCount++;
-
-          totalMessages += checkpointData.messages_synced || 0;
-        } else {
-          // Check database (fallback for completed/old syncs)
-          const syncStatus = database.getSyncStatus();
-          const checkpointData = {
-            chat_jid,
-            messages_synced: syncStatus.messages_synced,
-            status: syncStatus.is_syncing ? 'in_progress' : 'completed',
-            last_sync_time: syncStatus.last_sync_time,
-            progress_percent: syncStatus.progress_percent
-          };
-          checkpoints.push(checkpointData);
-
-          if (checkpointData.status === 'completed') completedCount++;
-        }
-      }
-
-      const total = syncIdArray.length;
-      const overallProgress = total > 0 ? Math.floor((completedCount / total) * 100) : 0;
-
-      res.status(200).json({
-        total,
-        completed: completedCount,
-        in_progress: inProgressCount,
-        failed: failedCount,
-        progress_percent: overallProgress,
-        total_messages_synced: totalMessages,
-        checkpoints
-      });
-
-    } catch (error) {
-      logger.error({ error }, 'Error getting bulk sync status');
-      res.status(500).json({
-        error: 'Failed to get bulk sync status',
         message: String(error)
       });
     }
@@ -638,7 +645,8 @@ async function syncHistory(
   baileysClient: BaileysClient,
   database: DatabaseService,
   logger: Logger,
-  activeSyncs: Map<string, SyncCheckpoint>
+  activeSyncs: Map<string, SyncCheckpoint>,
+  goDbPath?: string
 ): Promise<void> {
   const BATCH_SIZE = 100;
   const CHECKPOINT_INTERVAL = 100;
@@ -675,7 +683,8 @@ async function syncHistory(
           BATCH_SIZE,
           cursor,
           logger,
-          database
+          database,
+          goDbPath
         );
 
         if (batch.messages.length === 0) {
@@ -812,11 +821,43 @@ async function fetchMessageBatch(
   count: number,
   oldestMessageId: string | undefined,
   logger: Logger,
-  database: DatabaseService
+  database: DatabaseService,
+  goDbPath?: string
 ): Promise<{ messages: any[]; cursor: string | undefined }> {
   try {
-    // Get the oldest message from database to use as cursor
-    const oldestMessage = database.getOldestMessage(chatJid);
+    // Get the oldest message - use Go DB if provided, otherwise Baileys temp DB
+    let oldestMessage: { id: string; timestamp: Date; is_from_me: boolean } | null;
+
+    if (goDbPath) {
+      // Read from Go production database
+      const goDb = new Database(goDbPath, { readonly: true });
+      try {
+        const row = goDb.prepare(`
+          SELECT id, timestamp, sender = chat_jid as is_from_me
+          FROM messages
+          WHERE chat_jid = ?
+          ORDER BY timestamp ASC
+          LIMIT 1
+        `).get(chatJid) as { id: string; timestamp: string; is_from_me: number } | undefined;
+
+        if (row) {
+          oldestMessage = {
+            id: row.id,
+            timestamp: new Date(row.timestamp),
+            is_from_me: row.is_from_me === 1
+          };
+          logger.debug({ chatJid, messageId: oldestMessage.id, timestamp: oldestMessage.timestamp }, 'Using oldest message from Go database');
+        } else {
+          oldestMessage = null;
+        }
+      } finally {
+        goDb.close();
+      }
+    } else {
+      // Fallback to Baileys temp database
+      oldestMessage = database.getOldestMessage(chatJid);
+      logger.debug({ chatJid }, 'Using oldest message from Baileys temp database');
+    }
 
     if (!oldestMessage) {
       logger.warn({ chatJid }, 'No messages in database - cannot fetch older history without starting point');

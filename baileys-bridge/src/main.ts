@@ -20,6 +20,9 @@ import {
   clearAllData,
   Message
 } from './database.js';
+import { BaileysClient } from './services/baileys_client.js';
+import { DatabaseService } from './services/database.js';
+import { createHistoryRouter } from './routes/history.js';
 import { registerPollRoutes } from './routes/polls.js';
 import { registerStatusRoutes } from './routes/status.js';
 import { registerPrivacyRoutes } from './routes/privacy.js';
@@ -345,6 +348,31 @@ const businessRouter = Router();
 registerBusinessRoutes(businessRouter, () => sock);
 app.use('/api', businessRouter);
 
+// Initialize database service for history sync
+const databaseService = new DatabaseService({
+  dataDir: 'data',
+  dbName: 'baileys_temp.db',
+  logLevel: 'info'
+});
+
+// Create a simple adapter to make legacy sock compatible with BaileysClient interface
+const legacyBaileysAdapter = {
+  getSocket: () => sock,
+  getConnectionState: () => isConnected,
+  connect: async () => { /* Using legacy connection */ },
+  disconnect: () => { /* Using legacy connection */ },
+  close: () => { /* Using legacy connection */ }
+};
+
+// Register history routes with Go database path for cursor initialization
+const historyRouter = createHistoryRouter({
+  baileysClient: legacyBaileysAdapter as any, // Cast to bypass TypeScript type checking
+  database: databaseService,
+  logLevel: 'info',
+  goDbPath: '../whatsapp-bridge/store/messages.db' // Path to Go database for reading oldest messages
+});
+app.use('/history', historyRouter);
+
 // Start server
 const PORT = 8081;
 app.listen(PORT, () => {
@@ -352,12 +380,17 @@ app.listen(PORT, () => {
   logger.info(`   Health: http://localhost:${PORT}/health`);
   logger.info(`   Sync Status: http://localhost:${PORT}/api/sync/status`);
   logger.info(`   Messages: http://localhost:${PORT}/api/messages`);
+  logger.info(`   History Sync: http://localhost:${PORT}/history/sync`);
+  logger.info(`   Bulk Sync: http://localhost:${PORT}/history/sync/bulk`);
 
-  // Connect to WhatsApp
+  // Connect to WhatsApp (legacy connection)
   connectToWhatsApp().catch(error => {
-    logger.error({ error }, 'Failed to connect to WhatsApp');
-    process.exit(1);
+    logger.error({ error }, 'Failed to connect to WhatsApp (legacy)');
   });
+
+  // Note: BaileysClient NOT connected here to avoid conflict with legacy sock
+  // The history router will use the legacy sock via a wrapper
+  // TODO: Refactor to use only BaileysClient for all routes
 });
 
 // Graceful shutdown
@@ -366,5 +399,6 @@ process.on('SIGINT', () => {
   if (sock) {
     sock.end(undefined);
   }
+  databaseService.close();
   process.exit(0);
 });
