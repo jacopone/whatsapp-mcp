@@ -50,3 +50,8 @@ baileys-bridge/dist/
 # Test/development scripts
 sync_all_history.py
 GOOGLE_DRIVE_BACKUP_IMPORT.md
+# Claude Code local settings
+.claude/settings.local.json
+.claude/mcp.json
+.claude/tdd-guard/
+!.claude/tdd-guard/data/instructions.md
