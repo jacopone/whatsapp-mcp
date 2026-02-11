@@ -1,6 +1,6 @@
 import sqlite3
 from datetime import datetime
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from typing import Optional, List, Tuple
 import os.path
 import requests
@@ -201,19 +201,27 @@ def list_messages(
             )
             result.append(message)
             
+        def message_to_dict(msg):
+            """Convert Message dataclass to dict with serializable datetime."""
+            msg_dict = asdict(msg)
+            msg_dict['timestamp'] = msg_dict['timestamp'].isoformat()
+            return msg_dict
+
         if include_context and result:
             # Add context for each message
             messages_with_context = []
+            seen_ids = set()
             for msg in result:
                 context = get_message_context(msg.id, context_before, context_after)
-                messages_with_context.extend(context.before)
-                messages_with_context.append(context.message)
-                messages_with_context.extend(context.after)
-            
-            return format_messages_list(messages_with_context, show_chat_info=True)
-            
-        # Format and display messages without context
-        return format_messages_list(result, show_chat_info=True)    
+                for m in context.before + [context.message] + context.after:
+                    if m.id not in seen_ids:
+                        messages_with_context.append(message_to_dict(m))
+                        seen_ids.add(m.id)
+
+            return messages_with_context
+
+        # Return messages as list of dictionaries
+        return [message_to_dict(msg) for msg in result]    
         
     except sqlite3.Error as e:
         print(f"Database error: {e}")
@@ -323,51 +331,70 @@ def list_chats(
     include_last_message: bool = True,
     sort_by: str = "last_active"
 ) -> List[Chat]:
-    """Get chats matching the specified criteria."""
+    """Get chats matching the specified criteria.
+
+    NOTE: Uses actual message timestamps from messages table, not the potentially
+    stale last_message_time in chats table (which can be updated by WhatsApp
+    events like typing notifications without storing actual messages).
+    """
     try:
         conn = sqlite3.connect(MESSAGES_DB_PATH)
         cursor = conn.cursor()
-        
-        # Build base query
-        query_parts = ["""
-            SELECT 
-                chats.jid,
-                chats.name,
-                chats.last_message_time,
-                messages.content as last_message,
-                messages.sender as last_sender,
-                messages.is_from_me as last_is_from_me
-            FROM chats
-        """]
-        
-        if include_last_message:
-            query_parts.append("""
-                LEFT JOIN messages ON chats.jid = messages.chat_jid 
-                AND chats.last_message_time = messages.timestamp
-            """)
-            
+
+        # Use a subquery to get the actual last message for each chat
+        # This avoids the bug where chats.last_message_time is stale
+        base_query = """
+            WITH last_messages AS (
+                SELECT
+                    chat_jid,
+                    MAX(timestamp) as last_msg_time
+                FROM messages
+                GROUP BY chat_jid
+            ),
+            ranked_messages AS (
+                SELECT
+                    m.chat_jid,
+                    m.content,
+                    m.sender,
+                    m.is_from_me,
+                    m.timestamp,
+                    ROW_NUMBER() OVER (PARTITION BY m.chat_jid ORDER BY m.timestamp DESC) as rn
+                FROM messages m
+            )
+            SELECT
+                c.jid,
+                c.name,
+                lm.last_msg_time as last_message_time,
+                rm.content as last_message,
+                rm.sender as last_sender,
+                rm.is_from_me as last_is_from_me
+            FROM chats c
+            INNER JOIN last_messages lm ON c.jid = lm.chat_jid
+            LEFT JOIN ranked_messages rm ON c.jid = rm.chat_jid AND rm.rn = 1
+        """
+
         where_clauses = []
         params = []
-        
+
         if query:
-            where_clauses.append("(LOWER(chats.name) LIKE LOWER(?) OR chats.jid LIKE ?)")
+            where_clauses.append("(LOWER(c.name) LIKE LOWER(?) OR c.jid LIKE ?)")
             params.extend([f"%{query}%", f"%{query}%"])
-            
+
         if where_clauses:
-            query_parts.append("WHERE " + " AND ".join(where_clauses))
-            
-        # Add sorting
-        order_by = "chats.last_message_time DESC" if sort_by == "last_active" else "chats.name"
-        query_parts.append(f"ORDER BY {order_by}")
-        
+            base_query += " WHERE " + " AND ".join(where_clauses)
+
+        # Add sorting - use the actual last message time
+        order_by = "lm.last_msg_time DESC" if sort_by == "last_active" else "c.name"
+        base_query += f" ORDER BY {order_by}"
+
         # Add pagination
-        offset = (page ) * limit
-        query_parts.append("LIMIT ? OFFSET ?")
+        offset = page * limit
+        base_query += " LIMIT ? OFFSET ?"
         params.extend([limit, offset])
-        
-        cursor.execute(" ".join(query_parts), tuple(params))
+
+        cursor.execute(base_query, tuple(params))
         chats = cursor.fetchall()
-        
+
         result = []
         for chat_data in chats:
             chat = Chat(
@@ -378,10 +405,14 @@ def list_chats(
                 last_sender=chat_data[4],
                 last_is_from_me=chat_data[5]
             )
-            result.append(chat)
-            
+            chat_dict = asdict(chat)
+            # Convert datetime to ISO string for JSON serialization
+            if chat_dict['last_message_time']:
+                chat_dict['last_message_time'] = chat_dict['last_message_time'].isoformat()
+            result.append(chat_dict)
+
         return result
-        
+
     except sqlite3.Error as e:
         print(f"Database error: {e}")
         return []
@@ -420,8 +451,8 @@ def search_contacts(query: str) -> List[Contact]:
                 name=contact_data[1],
                 jid=contact_data[0]
             )
-            result.append(contact)
-            
+            result.append(asdict(contact))
+
         return result
         
     except sqlite3.Error as e:
@@ -458,9 +489,9 @@ def get_contact_chats(jid: str, limit: int = 20, page: int = 0) -> List[Chat]:
             ORDER BY c.last_message_time DESC
             LIMIT ? OFFSET ?
         """, (jid, jid, limit, page * limit))
-        
+
         chats = cursor.fetchall()
-        
+
         result = []
         for chat_data in chats:
             chat = Chat(
@@ -471,10 +502,13 @@ def get_contact_chats(jid: str, limit: int = 20, page: int = 0) -> List[Chat]:
                 last_sender=chat_data[4],
                 last_is_from_me=chat_data[5]
             )
-            result.append(chat)
-            
+            chat_dict = asdict(chat)
+            if chat_dict['last_message_time']:
+                chat_dict['last_message_time'] = chat_dict['last_message_time'].isoformat()
+            result.append(chat_dict)
+
         return result
-        
+
     except sqlite3.Error as e:
         print(f"Database error: {e}")
         return []
@@ -559,11 +593,11 @@ def get_chat(chat_jid: str, include_last_message: bool = True) -> Optional[Chat]
         
         cursor.execute(query, (chat_jid,))
         chat_data = cursor.fetchone()
-        
+
         if not chat_data:
             return None
-            
-        return Chat(
+
+        chat = Chat(
             jid=chat_data[0],
             name=chat_data[1],
             last_message_time=datetime.fromisoformat(chat_data[2]) if chat_data[2] else None,
@@ -571,7 +605,11 @@ def get_chat(chat_jid: str, include_last_message: bool = True) -> Optional[Chat]
             last_sender=chat_data[4],
             last_is_from_me=chat_data[5]
         )
-        
+        chat_dict = asdict(chat)
+        if chat_dict['last_message_time']:
+            chat_dict['last_message_time'] = chat_dict['last_message_time'].isoformat()
+        return chat_dict
+
     except sqlite3.Error as e:
         print(f"Database error: {e}")
         return None
@@ -600,13 +638,13 @@ def get_direct_chat_by_contact(sender_phone_number: str) -> Optional[Chat]:
             WHERE c.jid LIKE ? AND c.jid NOT LIKE '%@g.us'
             LIMIT 1
         """, (f"%{sender_phone_number}%",))
-        
+
         chat_data = cursor.fetchone()
-        
+
         if not chat_data:
             return None
-            
-        return Chat(
+
+        chat = Chat(
             jid=chat_data[0],
             name=chat_data[1],
             last_message_time=datetime.fromisoformat(chat_data[2]) if chat_data[2] else None,
@@ -614,7 +652,11 @@ def get_direct_chat_by_contact(sender_phone_number: str) -> Optional[Chat]:
             last_sender=chat_data[4],
             last_is_from_me=chat_data[5]
         )
-        
+        chat_dict = asdict(chat)
+        if chat_dict['last_message_time']:
+            chat_dict['last_message_time'] = chat_dict['last_message_time'].isoformat()
+        return chat_dict
+
     except sqlite3.Error as e:
         print(f"Database error: {e}")
         return None
