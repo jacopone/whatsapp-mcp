@@ -29,7 +29,7 @@ Here's an example of what you can do when it's connected to Claude.
 1. **Clone this repository**
 
    ```bash
-   git clone https://github.com/lharries/whatsapp-mcp.git
+   git clone https://github.com/jacopone/whatsapp-mcp.git
    cd whatsapp-mcp
    ```
 

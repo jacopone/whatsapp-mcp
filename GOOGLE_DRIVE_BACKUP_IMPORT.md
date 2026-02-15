@@ -13,8 +13,8 @@ WhatsApp automatically backs up your messages to Google Drive (on Android). Thes
 - ✅ Safe - no encryption key extraction needed
 
 ```bash
-cd /home/guyfawkes/birthday-manager/whatsapp-mcp
-./sync_all_history.py
+cd whatsapp-mcp
+python sync_all_history.py
 ```
 
 ## Option 2: Google Drive Backup Import (ADVANCED)
